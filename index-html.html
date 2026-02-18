@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Texturas — Multi-layered Correlated Textual Analysis</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#111;color:#ddd;font-family:monospace;overflow:hidden;height:100vh}
+#root{height:100vh}
+input[type="range"]{width:100%}
+select{font-family:monospace}
+textarea{font-family:monospace}
+button{font-family:monospace}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#1a1a1a}
+::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ══════ CONFIG ══════
+var ASSET_BASE_URL = "https://epsidebox.github.io/texturas/assets/";
+
+// ══════ CONSTANTS ══════
+var STOP_WORDS_ARR = ["the","a","an","and","or","but","in","on","at","to","for","of","with","by","from","is","are","was","were","be","been","being","have","has","had","do","does","did","will","would","shall","should","may","might","can","could","this","that","these","those","it","its","i","me","my","mine","we","us","our","ours","you","your","yours","he","him","his","she","her","hers","they","them","their","theirs","what","which","who","whom","whose","where","when","how","why","if","then","else","so","because","as","than","too","very","just","about","above","after","again","all","also","am","any","before","below","between","both","during","each","few","further","get","got","here","into","more","most","much","only","other","out","over","own","same","some","such","there","through","under","until","up","while","down","like","make","many","now","off","once","one","onto","per","since","still","take","thing","things","think","two","upon","well","went","yeah","yes","oh","um","uh","ah","okay","ok","really","actually","basically","literally","right","know","going","go","come","say","said","tell","told","see","look","want","need","way","back","even","around","something","anything","everything","someone","anyone","everyone","always","sometimes","often","already","yet","kind","sort","lot","bit","little","big","good","great","long","new","old","first","last","next","time","times","day","days","year","years","people","person","part","place","point","work","life","world","hand","week","end","case","fact","area","number","given","able","made","set","used","using","another","different","example","enough","however","important","include","including","keep","large","whether","without","within","along","become","across","among","toward","towards","though","although","either","rather","several","certain","less","likely","began","begun","brought","thus","therefore","hence","moreover","furthermore","nevertheless","nonetheless","meanwhile","accordingly","consequently","subsequently"];
+var STOP_WORDS = new Set(STOP_WORDS_ARR);
+var NEGATION = new Set(["not","no","never","neither","nor","don't","doesn't","didn't","won't","wouldn't","can't","couldn't","shouldn't","isn't","aren't","wasn't","weren't","haven't","hasn't","hadn't","cannot","nothing","nobody","none","nowhere"]);
+var EMOTIONS = ["anger","anticipation","disgust","fear","joy","sadness","surprise","trust"];
+var EC = {anger:"#ff6b6b",anticipation:"#f7dc6f",disgust:"#bb8fce",fear:"#85c1e9",joy:"#82e0aa",sadness:"#45b7d1",surprise:"#f0b27a",trust:"#4ecdc4"};
+var CC = ["#ff6b6b","#4ecdc4","#45b7d1","#f7dc6f","#bb8fce","#82e0aa","#f0b27a","#85c1e9","#f1948a","#73c6b6"];
+
+var e = React.createElement;
+var useState = React.useState;
+var useRef = React.useRef;
+var useEffect = React.useEffect;
+var useCallback = React.useCallback;
+
+// ══════ ENGINES ══════
+function POSTagger() { this.lk = null; this.ready = false; }
+POSTagger.prototype.load = function(d) { this.lk = d; this.ready = true; };
+POSTagger.prototype.sfx = [["tion","n"],["sion","n"],["ment","n"],["ness","n"],["ity","n"],["ance","n"],["ence","n"],["ism","n"],["ist","n"],["ting","v"],["sing","v"],["ning","v"],["ing","v"],["ated","v"],["ized","v"],["ed","v"],["ize","v"],["ify","v"],["ously","r"],["ively","r"],["fully","r"],["ally","r"],["ly","r"],["ful","a"],["ous","a"],["ive","a"],["able","a"],["ible","a"],["ical","a"],["less","a"],["al","a"]];
+POSTagger.prototype.tag = function(w) {
+  var l = w.toLowerCase();
+  if (this.lk && this.lk[l]) return this.lk[l];
+  for (var i = 0; i < this.sfx.length; i++) { if (l.endsWith(this.sfx[i][0])) return this.sfx[i][1]; }
+  return "n";
+};
+
+function Lemmatizer() { this.exc = null; this.rl = null; this.ready = false; }
+Lemmatizer.prototype.load = function(d) { this.exc = d.exceptions; this.rl = d.rules; this.ready = true; };
+Lemmatizer.prototype.lemmatize = function(w, pos) {
+  var l = w.toLowerCase();
+  if (this.exc && this.exc[pos] && this.exc[pos][l]) return this.exc[pos][l];
+  var rules = (this.rl && this.rl[pos]) ? this.rl[pos] : [];
+  for (var i = 0; i < rules.length; i++) {
+    if (l.endsWith(rules[i][0]) && l.length > rules[i][0].length) return l.slice(0, -rules[i][0].length) + rules[i][1];
+  }
+  return l;
+};
+
+function SynsetEngine() { this.d = null; this.ready = false; }
+SynsetEngine.prototype.load = function(d) { this.d = d; this.ready = true; };
+SynsetEngine.prototype.allRelated = function(w, p) {
+  var entry = this.d ? this.d[w + "#" + p] : null;
+  if (!entry) return [];
+  var s = new Set();
+  (entry.hypernyms || []).forEach(function(x) { s.add(x); });
+  (entry.hyponyms || []).forEach(function(x) { s.add(x); });
+  (entry.meronyms || []).forEach(function(x) { s.add(x); });
+  return Array.from(s);
+};
+
+function SentimentScorer() { this.el = null; this.int = null; this.vad = null; this.vdr = null; this.swn = null; this.ready = false; }
+SentimentScorer.prototype._c = function() { this.ready = !!(this.el || this.int || this.vad || this.vdr || this.swn); };
+SentimentScorer.prototype.lEl = function(d) { this.el = d; this._c(); };
+SentimentScorer.prototype.lInt = function(d) { this.int = d; this._c(); };
+SentimentScorer.prototype.lVad = function(d) { this.vad = d; this._c(); };
+SentimentScorer.prototype.lVdr = function(d) { this.vdr = d; this._c(); };
+SentimentScorer.prototype.lSwn = function(d) { this.swn = d; this._c(); };
+SentimentScorer.prototype.score = function(lem, pos) {
+  var r = { lemma: lem, pos: pos };
+  if (this.el && this.el[lem]) r.emolex = this.el[lem];
+  if (this.int && this.int[lem]) r.intensity = this.int[lem];
+  if (this.vad && this.vad[lem]) r.vad = this.vad[lem];
+  if (this.vdr && this.vdr[lem] !== undefined) r.vader = this.vdr[lem];
+  var k = lem + "#" + pos;
+  if (this.swn && this.swn[k]) { r.swn = this.swn[k]; }
+  else if (this.swn) {
+    var vs = ["n","v","a","r"].map(function(p) { return this.swn[lem + "#" + p]; }.bind(this)).filter(Boolean);
+    if (vs.length) { r.swn = vs[0]; if (vs.length > 1 && Math.max.apply(null, vs.map(function(v){return v.p})) - Math.min.apply(null, vs.map(function(v){return v.p})) > 0.3) r.swn_ambig = true; }
+  }
+  r.has = !!(r.emolex || r.intensity || r.vad || r.vader !== undefined || r.swn);
+  return r;
+};
+
+function VectorEngine() { this.v = new Map(); this.dim = 0; this.vocab = 0; }
+VectorEngine.prototype.loadBin = function(vj, vb) {
+  var dim = vj.dim; var vocab = vj.vocab; this.dim = dim;
+  var f = new Float32Array(vb);
+  var entries = Object.entries(vocab);
+  for (var i = 0; i < entries.length; i++) { this.v.set(entries[i][0], f.slice(entries[i][1] * dim, (entries[i][1] + 1) * dim)); }
+  this.vocab = this.v.size;
+  return { vocab: this.vocab, dim: this.dim };
+};
+VectorEngine.prototype.cos = function(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  var d = 0, ma = 0, mb = 0;
+  for (var i = 0; i < a.length; i++) { d += a[i]*b[i]; ma += a[i]*a[i]; mb += b[i]*b[i]; }
+  var dn = Math.sqrt(ma) * Math.sqrt(mb);
+  return dn === 0 ? 0 : d / dn;
+};
+VectorEngine.prototype.near = function(w, k, ex) {
+  var vec = this.v.get(w); if (!vec) return [];
+  var exc = ex || new Set([w]); var r = [];
+  this.v.forEach(function(vv, ww) {
+    if (exc.has(ww)) return;
+    var s = this.cos(vec, vv);
+    if (r.length < k) { r.push({term:ww,similarity:s}); r.sort(function(a,b){return b.similarity-a.similarity}); }
+    else if (s > r[r.length-1].similarity) { r[r.length-1] = {term:ww,similarity:s}; r.sort(function(a,b){return b.similarity-a.similarity}); }
+  }.bind(this));
+  return r;
+};
+VectorEngine.prototype.has = function(w) { return this.v.has(w); };
+VectorEngine.prototype.isLoaded = function() { return this.vocab > 0; };
+
+// ══════ ANALYSIS ══════
+function tokenize(t) { return t.toLowerCase().replace(/[^\w\s'-]/g, " ").split(/\s+/).filter(function(t) { return t.length > 1; }); }
+function filt(t) { return !STOP_WORDS.has(t) || NEGATION.has(t); }
+function getFreqs(ts) { return _.chain(ts).countBy().toPairs().sortBy(1).reverse().value(); }
+function getNg(ts, n) { var g = []; for (var i = 0; i <= ts.length - n; i++) g.push(ts.slice(i, i+n).join(" ")); return _.chain(g).countBy().toPairs().sortBy(1).reverse().value(); }
+function getCooc(ts, tw, win) {
+  var ws = new Set(tw); var mx = {};
+  tw.forEach(function(w) { mx[w] = {}; tw.forEach(function(v) { mx[w][v] = 0; }); });
+  for (var i = 0; i < ts.length; i++) { if (!ws.has(ts[i])) continue;
+    for (var j = Math.max(0, i-win); j <= Math.min(ts.length-1, i+win); j++) { if (i !== j && ws.has(ts[j])) mx[ts[i]][ts[j]]++; }
+  } return mx;
+}
+function detectComm(mx, nodes) {
+  var n = nodes.length; var cm = []; for (var i=0;i<n;i++) cm.push(i);
+  var tw = 0; var wt = {};
+  nodes.forEach(function(a) { wt[a] = 0; nodes.forEach(function(b) { var w = (mx[a] && mx[a][b]) ? mx[a][b] : 0; tw += w; wt[a] += w; }); });
+  tw /= 2; if (tw === 0) return cm;
+  var imp = true, it = 0;
+  while (imp && it < 20) { imp = false; it++;
+    for (var i2 = 0; i2 < n; i2++) { var bc = cm[i2], bg = 0;
+      var uniq = Array.from(new Set(cm));
+      for (var ci = 0; ci < uniq.length; ci++) { var c = uniq[ci]; if (c === cm[i2]) continue;
+        var g = 0; for (var j2 = 0; j2 < n; j2++) { if (cm[j2] !== c) continue;
+          g += ((mx[nodes[i2]] && mx[nodes[i2]][nodes[j2]]) ? mx[nodes[i2]][nodes[j2]] : 0) - (wt[nodes[i2]] * wt[nodes[j2]]) / (2 * tw); }
+        if (g > bg) { bg = g; bc = c; } }
+      if (bc !== cm[i2]) { cm[i2] = bc; imp = true; } }
+  }
+  var u = Array.from(new Set(cm)); return cm.map(function(c) { return u.indexOf(c); });
+}
+function segText(t) {
+  return t.split(/\n\s*\n+/).filter(function(p) { return p.trim(); }).map(function(p, pi) {
+    return { id: "p" + (pi+1), sentences: p.split(/(?<=[.!?])\s+/).filter(function(s) { return s.trim(); }).map(function(s, si) {
+      return { id: "s" + (pi+1) + "." + (si+1), text: s, tokens: tokenize(s) };
+    })};
+  });
+}
+
+function analyzeDoc(text, eng, topN, winSize) {
+  var segs = segText(text);
+  var allToks = [];
+  segs.forEach(function(p) { p.sentences.forEach(function(s) { allToks = allToks.concat(s.tokens); }); });
+  var lem = allToks.map(function(t) {
+    var pos = eng.pos.ready ? eng.pos.tag(t) : "n";
+    var lemma = eng.lem.ready ? eng.lem.lemmatize(t, pos) : t;
+    return { surface: t, lemma: lemma, pos: pos };
+  });
+  var filtered = lem.filter(function(t) { return filt(t.lemma); });
+  var lemList = filtered.map(function(t) { return t.lemma; });
+  var freqs = getFreqs(lemList);
+  var fMap = {};
+  freqs.forEach(function(f) { fMap[f[0]] = f[1]; });
+  var ng2 = getNg(lemList, 2);
+  var ng3 = getNg(lemList, 3);
+  var topW = freqs.slice(0, topN).map(function(f) { return f[0]; });
+  var matrix = getCooc(lemList, topW, winSize);
+  var comms = detectComm(matrix, topW);
+
+  var sentScores = [];
+  var sentData = null;
+  var cors = null;
+
+  if (eng.sent.ready) {
+    sentScores = filtered.map(function(t) { return eng.sent.score(t.lemma, t.pos); });
+    var emos = {};
+    EMOTIONS.forEach(function(em) { emos[em] = 0; });
+    var vS = { v: 0, a: 0, d: 0 }; var vN = 0;
+    sentScores.forEach(function(s) {
+      if (s.emolex) EMOTIONS.forEach(function(em) { emos[em] += (s.emolex[em] || 0); });
+      if (s.vad) { vS.v += s.vad.v; vS.a += s.vad.a; vS.d += s.vad.d; vN++; }
+    });
+    var vad = vN > 0 ? { v: vS.v/vN, a: vS.a/vN, d: vS.d/vN } : null;
+    var ts = {};
+    sentScores.forEach(function(s) {
+      if (!ts[s.lemma]) ts[s.lemma] = { lemma: s.lemma, freq: 0, emotions: {}, vader: null, swn_ambig: false };
+      ts[s.lemma].freq = fMap[s.lemma] || 0;
+      if (s.emolex) Object.entries(s.emolex).forEach(function(pair) { if (pair[1]) ts[s.lemma].emotions[pair[0]] = (ts[s.lemma].emotions[pair[0]] || 0) + 1; });
+      if (s.vader !== undefined) ts[s.lemma].vader = s.vader;
+      if (s.swn_ambig) ts[s.lemma].swn_ambig = true;
+    });
+    var topEmo = Object.values(ts).filter(function(t) { return Object.keys(t.emotions).length > 0; })
+      .map(function(t) {
+        var te = Object.entries(t.emotions).sort(function(a,b) { return b[1]-a[1]; }).slice(0,3);
+        var ec = Object.values(t.emotions).reduce(function(a,b) { return a+b; }, 0);
+        return Object.assign({}, t, { topEmotions: te, emotionCount: ec });
+      }).sort(function(a,b) { return b.emotionCount * b.freq - a.emotionCount * a.freq; });
+    var ambig = Object.values(ts).filter(function(t) { return t.swn_ambig; }).map(function(t) { return t.lemma; });
+    sentData = { emotions: emos, vad: vad, topEmotional: topEmo, ambiguous: ambig };
+
+    // Correlations
+    var cpf = {};
+    var commCount = new Set(comms).size;
+    for (var ci = 0; ci < commCount; ci++) {
+      var members = topW.filter(function(_, i) { return comms[i] === ci; });
+      var prof = {};
+      EMOTIONS.forEach(function(em) { prof[em] = 0; });
+      var vs2 = {v:0,a:0,d:0}; var vn2 = 0; var vdrS = 0; var vdrN = 0;
+      members.forEach(function(w) {
+        var sc = eng.sent.score(w, "n");
+        if (sc.emolex) EMOTIONS.forEach(function(em) { prof[em] += (sc.emolex[em] || 0); });
+        if (sc.vad) { vs2.v += sc.vad.v; vs2.a += sc.vad.a; vs2.d += sc.vad.d; vn2++; }
+        if (sc.vader !== undefined) { vdrS += sc.vader; vdrN++; }
+      });
+      cpf[ci] = { members: members, emotions: prof,
+        vad: vn2 > 0 ? {v:vs2.v/vn2, a:vs2.a/vn2, d:vs2.d/vn2} : null,
+        vader: vdrN > 0 ? vdrS/vdrN : null };
+    }
+    var fSent = freqs.slice(0, 60).map(function(pair) {
+      var sc = eng.sent.score(pair[0], "n");
+      return { word: pair[0], freq: pair[1], vader: sc.vader != null ? sc.vader : 0,
+        emoCount: sc.emolex ? EMOTIONS.filter(function(em) { return sc.emolex[em]; }).length : 0,
+        dominant: sc.emolex ? EMOTIONS.filter(function(em) { return sc.emolex[em]; }) : [] };
+    });
+    var sIdx = 0; var traj = [];
+    segs.forEach(function(p) { p.sentences.forEach(function(s) {
+      var st = s.tokens.filter(filt); var vSm = 0; var vNm = 0; var ea = {};
+      EMOTIONS.forEach(function(em) { ea[em] = 0; });
+      st.forEach(function(t2) {
+        var sc = sentScores.find(function(x) { return x.lemma === t2; });
+        if (sc && sc.vader !== undefined) { vSm += sc.vader; vNm++; }
+        if (sc && sc.emolex) EMOTIONS.forEach(function(em) { ea[em] += (sc.emolex[em] || 0); });
+      });
+      traj.push({ idx: sIdx++, id: s.id, pId: p.id, vader: vNm > 0 ? vSm/vNm : 0,
+        emotions: Object.assign({}, ea),
+        dominantEmo: EMOTIONS.reduce(function(a,b) { return ea[a] > ea[b] ? a : b; }) });
+    }); });
+    cors = { commProfiles: cpf, freqSent: fSent, trajectory: traj };
+  }
+
+  return { segs: segs, filtered: filtered, tokens: lemList, freqs: freqs, fMap: fMap,
+    ng2: ng2, ng3: ng3, topW: topW, matrix: matrix, comms: comms,
+    sentScores: sentScores, sentData: sentData, cors: cors };
+}
+
+function computeAggregate(docAnalyses, eng, topN, winSize) {
+  var allTokens = [];
+  docAnalyses.forEach(function(d) { allTokens = allTokens.concat(d.tokens); });
+  var freqs = getFreqs(allTokens);
+  var fMap = {};
+  freqs.forEach(function(f) { fMap[f[0]] = f[1]; });
+  var ng2 = getNg(allTokens, 2);
+  var ng3 = getNg(allTokens, 3);
+  var topW = freqs.slice(0, topN).map(function(f) { return f[0]; });
+  var matrix = {};
+  topW.forEach(function(w) { matrix[w] = {}; topW.forEach(function(v) { matrix[w][v] = 0; }); });
+  docAnalyses.forEach(function(da) {
+    var m = getCooc(da.tokens, topW, winSize);
+    topW.forEach(function(a) { topW.forEach(function(b) { matrix[a][b] += ((m[a] && m[a][b]) ? m[a][b] : 0); }); });
+  });
+  var comms = detectComm(matrix, topW);
+  var sentData = null; var cors = null;
+  if (eng.sent.ready) {
+    var allScores = [];
+    docAnalyses.forEach(function(d) { allScores = allScores.concat(d.sentScores); });
+    var emos = {};
+    EMOTIONS.forEach(function(em) { emos[em] = 0; });
+    var vS = {v:0,a:0,d:0}; var vN = 0;
+    allScores.forEach(function(s) {
+      if (s.emolex) EMOTIONS.forEach(function(em) { emos[em] += (s.emolex[em]||0); });
+      if (s.vad) { vS.v += s.vad.v; vS.a += s.vad.a; vS.d += s.vad.d; vN++; }
+    });
+    var vad = vN > 0 ? {v:vS.v/vN,a:vS.a/vN,d:vS.d/vN} : null;
+    var ts = {};
+    allScores.forEach(function(s) {
+      if (!ts[s.lemma]) ts[s.lemma] = { lemma:s.lemma, freq:0, emotions:{}, vader:null, swn_ambig:false };
+      ts[s.lemma].freq = fMap[s.lemma] || 0;
+      if (s.emolex) Object.entries(s.emolex).forEach(function(p) { if(p[1]) ts[s.lemma].emotions[p[0]]=(ts[s.lemma].emotions[p[0]]||0)+1; });
+      if (s.vader !== undefined) ts[s.lemma].vader = s.vader;
+      if (s.swn_ambig) ts[s.lemma].swn_ambig = true;
+    });
+    var topEmo = Object.values(ts).filter(function(t){return Object.keys(t.emotions).length>0})
+      .map(function(t){ return Object.assign({},t,{topEmotions:Object.entries(t.emotions).sort(function(a,b){return b[1]-a[1]}).slice(0,3),emotionCount:Object.values(t.emotions).reduce(function(a,b){return a+b},0)})})
+      .sort(function(a,b){return b.emotionCount*b.freq-a.emotionCount*a.freq});
+    sentData = { emotions:emos, vad:vad, topEmotional:topEmo, ambiguous:Object.values(ts).filter(function(t){return t.swn_ambig}).map(function(t){return t.lemma}) };
+    // Aggregate correlations
+    var cpf = {};
+    var commCount = new Set(comms).size;
+    for (var ci=0; ci<commCount; ci++) {
+      var members = topW.filter(function(_,i){return comms[i]===ci});
+      var prof = {}; EMOTIONS.forEach(function(em){prof[em]=0});
+      var vs2={v:0,a:0,d:0};var vn2=0;var vdrS=0;var vdrN=0;
+      members.forEach(function(w){var sc=eng.sent.score(w,"n");if(sc.emolex)EMOTIONS.forEach(function(em){prof[em]+=(sc.emolex[em]||0)});if(sc.vad){vs2.v+=sc.vad.v;vs2.a+=sc.vad.a;vs2.d+=sc.vad.d;vn2++}if(sc.vader!==undefined){vdrS+=sc.vader;vdrN++}});
+      cpf[ci]={members:members,emotions:prof,vad:vn2>0?{v:vs2.v/vn2,a:vs2.a/vn2,d:vs2.d/vn2}:null,vader:vdrN>0?vdrS/vdrN:null};
+    }
+    var fSent = freqs.slice(0,60).map(function(p){var sc=eng.sent.score(p[0],"n");return{word:p[0],freq:p[1],vader:sc.vader!=null?sc.vader:0,emoCount:sc.emolex?EMOTIONS.filter(function(em){return sc.emolex[em]}).length:0}});
+    cors = { commProfiles:cpf, freqSent:fSent, trajectory:null };
+  }
+  var crossDoc = { perDocEmotions:{}, shared:[], distinctive:{} };
+  var vocabSets = {};
+  docAnalyses.forEach(function(da, i) {
+    vocabSets[i] = new Set(da.freqs.map(function(f){return f[0]}));
+    if (da.sentData) { crossDoc.perDocEmotions[i] = da.sentData.emotions; }
+  });
+  if (docAnalyses.length > 1) {
+    var allVocabs = Object.values(vocabSets);
+    crossDoc.shared = Array.from(allVocabs[0]).filter(function(w){return allVocabs.every(function(s){return s.has(w)})});
+    Object.entries(vocabSets).forEach(function(pair) {
+      crossDoc.distinctive[pair[0]] = Array.from(pair[1]).filter(function(w){return !allVocabs.some(function(os,j){return j!==parseInt(pair[0])&&os.has(w)})}).slice(0,30);
+    });
+  }
+  return { tokens:allTokens, freqs:freqs, fMap:fMap, ng2:ng2, ng3:ng3, topW:topW, matrix:matrix, comms:comms, sentData:sentData, cors:cors, crossDoc:crossDoc };
+}
+
+// ══════ CACHE ══════
+var DB_NAME = "texturas-cache";
+var DB_VER = 1;
+var STORE_NAME = "assets";
+
+function openDB() {
+  return new Promise(function(res, rej) {
+    var req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = function() { req.result.createObjectStore(STORE_NAME); };
+    req.onsuccess = function() { res(req.result); };
+    req.onerror = function() { rej(req.error); };
+  });
+}
+function cGet(k) {
+  return openDB().then(function(db) {
+    return new Promise(function(res) {
+      var tx = db.transaction(STORE_NAME, "readonly");
+      var req = tx.objectStore(STORE_NAME).get(k);
+      req.onsuccess = function() { res(req.result || null); };
+      req.onerror = function() { res(null); };
+    });
+  }).catch(function() { return null; });
+}
+function cSet(k, v) {
+  return openDB().then(function(db) {
+    return new Promise(function(res) {
+      var tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).put(v, k);
+      tx.oncomplete = function() { res(true); };
+      tx.onerror = function() { res(false); };
+    });
+  }).catch(function() { return false; });
+}
+function loadAsset(key, path, bin, cb) {
+  return cGet(key).then(function(cached) {
+    if (cached) return cached;
+    if (!ASSET_BASE_URL) return null;
+    var base = ASSET_BASE_URL.endsWith("/") ? ASSET_BASE_URL : ASSET_BASE_URL + "/";
+    if (cb) cb("Loading " + path + "...");
+    return fetch(base + path).then(function(r) {
+      if (!r.ok) return null;
+      return bin ? r.arrayBuffer() : r.json();
+    }).then(function(d) {
+      if (d) cSet(key, d);
+      return d;
+    }).catch(function() { return null; });
+  });
+}
+
+// ══════ APP ══════
+function Texturas() {
+  var docs = useState([{id:"d1",label:"Document 1",text:""}]);
+  var setDocs = docs[1]; docs = docs[0];
+  var aidState = useState("d1"); var activeInputDoc = aidState[0]; var setActiveInputDoc = aidState[1];
+  var tabState = useState("assets"); var tab = tabState[0]; var setTab = tabState[1];
+  var avState = useState("aggregate"); var activeView = avState[0]; var setActiveView = avState[1];
+  var tnState = useState(25); var topN = tnState[0]; var setTopN = tnState[1];
+  var wsState = useState(5); var winSize = wsState[0]; var setWinSize = wsState[1];
+  var dState = useState(10); var depth = dState[0]; var setDepth = dState[1];
+  var ldState = useState(false); var loading = ldState[0]; var setLoading = ldState[1];
+  var msgState = useState(""); var msg = msgState[0]; var setMsg = msgState[1];
+  var resState = useState(null); var results = resState[0]; var setResults = resState[1];
+  var engStState = useState(0); var setEngSt = engStState[1];
+
+  var engRef = useRef({
+    vec: new VectorEngine(), pos: new POSTagger(), lem: new Lemmatizer(),
+    syn: new SynsetEngine(), sent: new SentimentScorer()
+  });
+
+  // Load assets
+  useEffect(function() {
+    if (!ASSET_BASE_URL) return;
+    var cancelled = false;
+    var eng = engRef.current;
+
+    Promise.resolve().then(function() {
+      return loadAsset("v-v","vectors/vocab.json",false,setMsg);
+    }).then(function(vj) {
+      if (!vj || cancelled) return null;
+      return loadAsset("v-b","vectors/vectors.bin",true,setMsg).then(function(vb) {
+        if (vj && vb && !cancelled) eng.vec.loadBin(vj, vb);
+      });
+    }).then(function() {
+      return loadAsset("w-p","wordnet/pos-lookup.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.pos.load(d);
+      return loadAsset("w-l","wordnet/lemmatizer.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.lem.load(d);
+      return loadAsset("w-s","wordnet/synsets.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.syn.load(d);
+      return loadAsset("l-e","lexicons/nrc-emolex.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.sent.lEl(d);
+      return loadAsset("l-i","lexicons/nrc-intensity.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.sent.lInt(d);
+      return loadAsset("l-v","lexicons/nrc-vad.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.sent.lVad(d);
+      return loadAsset("l-d","lexicons/vader.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.sent.lVdr(d);
+      return loadAsset("l-s","lexicons/sentiwordnet.json",false,setMsg);
+    }).then(function(d) {
+      if (d && !cancelled) eng.sent.lSwn(d);
+      if (!cancelled) { setMsg(""); setEngSt(function(s){return s+1}); }
+    });
+
+    return function() { cancelled = true; };
+  }, []);
+
+  var eng = engRef.current;
+  var validDocs = docs.filter(function(d) { return d.text.trim(); });
+
+  function addDoc() {
+    var id = "d" + Date.now();
+    setDocs(function(d) { return d.concat([{id:id, label:"Document "+(d.length+1), text:""}]); });
+    setActiveInputDoc(id);
+  }
+  function rmDoc(id) {
+    if (docs.length <= 1) return;
+    setDocs(function(d) { return d.filter(function(x){return x.id!==id}); });
+  }
+  function updDoc(id, field, val) {
+    setDocs(function(d) { return d.map(function(x) { if(x.id===id){var n=Object.assign({},x);n[field]=val;return n}return x; }); });
+  }
+
+  function runAnalysis() {
+    var vd = docs.filter(function(d){return d.text.trim()});
+    if (!vd.length) return;
+    setLoading(true); setMsg("Analyzing...");
+    setTimeout(function() {
+      var perDoc = {};
+      vd.forEach(function(d) { perDoc[d.id] = analyzeDoc(d.text, eng, topN, winSize); });
+      var docAnalyses = vd.map(function(d){return perDoc[d.id]});
+      var agg = computeAggregate(docAnalyses, eng, topN, winSize);
+      setResults({ perDoc: perDoc, aggregate: agg });
+      setActiveView(vd.length === 1 ? vd[0].id : "aggregate");
+      setLoading(false); setMsg(""); setTab("frequency");
+    }, 50);
+  }
+
+  var activeA = results ? (activeView === "aggregate" ? results.aggregate : results.perDoc[activeView]) : null;
+  var activeSent = activeA ? activeA.sentData : null;
+
+  // ══════ RENDER ══════
+  var mainTabs = [
+    {id:"assets",l:"Assets"},{id:"input",l:"Input"},{id:"frequency",l:"Frequencies"},
+    {id:"sentiment",l:"Sentiment"},{id:"cooccurrence",l:"Co-occurrence"},
+    {id:"network",l:"Network"},{id:"credits",l:"Credits"}
+  ];
+  var analysisTabs = ["frequency","sentiment","cooccurrence","network"];
+
+  // Assets panel content
+  function renderAssets() {
+    var items = [
+      ["GloVe Vectors", eng.vec.isLoaded() ? eng.vec.vocab.toLocaleString()+" × "+eng.vec.dim+"d" : null],
+      ["POS Tagger", eng.pos.ready ? "ready" : null],
+      ["Lemmatizer", eng.lem.ready ? "ready" : null],
+      ["Synsets", eng.syn.ready ? "ready" : null],
+      ["NRC EmoLex", eng.sent.el ? Object.keys(eng.sent.el).length.toLocaleString() : null],
+      ["NRC Intensity", eng.sent.int ? Object.keys(eng.sent.int).length.toLocaleString() : null],
+      ["NRC VAD", eng.sent.vad ? Object.keys(eng.sent.vad).length.toLocaleString() : null],
+      ["VADER", eng.sent.vdr ? Object.keys(eng.sent.vdr).length.toLocaleString() : null],
+      ["SentiWordNet", eng.sent.swn ? Object.keys(eng.sent.swn).length.toLocaleString() : null]
+    ];
+    return e("div", {style:{maxWidth:560}},
+      e("h3", {style:{color:"#4ecdc4",fontSize:15,marginBottom:16,fontWeight:"normal"}}, "Asset Status"),
+      items.map(function(item) {
+        return e("div", {key:item[0], style:{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#1a1a1a",borderRadius:4,marginBottom:4,border:"1px solid "+(item[1]?"#333":"#2a2a2a")}},
+          e("span", {style:{fontSize:14}}, item[1] ? "✓" : "○"),
+          e("span", {style:{fontSize:12,color:item[1]?"#ccc":"#666",flex:1}}, item[0]),
+          e("span", {style:{fontSize:11,color:item[1]?"#82e0aa":"#444"}}, item[1] || "—")
+        );
+      }),
+      msg ? e("div", {style:{marginTop:12,fontSize:11,color:"#f7dc6f"}}, msg) : null
+    );
+  }
+
+  // Frequency bars
+  function renderFreqs() {
+    if (!activeA) return e("p",{style:{color:"#666"}},"No data");
+    var data = activeA.freqs.slice(0,40);
+    var mx = data[0] ? data[0][1] : 1;
+    return e("div", {style:{maxHeight:500,overflowY:"auto"}},
+      data.map(function(pair, i) {
+        return e("div", {key:i, style:{display:"flex",alignItems:"center",gap:8,marginBottom:3,fontSize:13}},
+          e("span", {style:{width:160,textAlign:"right",color:"#ccc",flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}, pair[0]),
+          e("div", {style:{flex:1,height:18,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}},
+            e("div", {style:{width:(pair[1]/mx*100)+"%",height:"100%",background:"hsl("+(170-i/data.length*60)+",70%,55%)",borderRadius:2}})
+          ),
+          e("span", {style:{width:40,color:"#888",fontSize:12}}, pair[1])
+        );
+      })
+    );
+  }
+
+  // Sentiment view
+  function renderSentiment() {
+    if (!activeSent) return e("p",{style:{color:"#888"}},"No sentiment data. Ensure lexicons are loaded.");
+    var emos = Object.entries(activeSent.emotions).sort(function(a,b){return b[1]-a[1]});
+    var mx = emos[0] ? emos[0][1] : 1;
+    return e("div", null,
+      e("h4",{style:{color:"#4ecdc4",fontSize:13,fontWeight:"normal",marginBottom:12}},"Emotion Profile"),
+      emos.map(function(pair) {
+        return e("div",{key:pair[0],style:{display:"flex",alignItems:"center",gap:8,marginBottom:4,fontSize:12}},
+          e("span",{style:{width:90,textAlign:"right",color:EC[pair[0]]||"#aaa"}},pair[0]),
+          e("div",{style:{flex:1,height:16,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}},
+            e("div",{style:{width:(pair[1]/mx*100)+"%",height:"100%",background:EC[pair[0]],opacity:0.8,borderRadius:2}})
+          ),
+          e("span",{style:{width:35,color:"#888",fontSize:11}},pair[1])
+        );
+      }),
+      activeSent.vad ? e("div",{style:{marginTop:16}},
+        e("h4",{style:{color:"#4ecdc4",fontSize:13,fontWeight:"normal",marginBottom:12}},"VAD Centroid"),
+        [["Valence",activeSent.vad.v,"#82e0aa"],["Arousal",activeSent.vad.a,"#f7dc6f"],["Dominance",activeSent.vad.d,"#45b7d1"]].map(function(r){
+          return e("div",{key:r[0],style:{marginBottom:8,fontSize:12}},
+            e("div",{style:{color:"#aaa",marginBottom:3}},r[0]+": ",e("span",{style:{color:r[2]}},r[1].toFixed(3))),
+            e("div",{style:{height:8,background:"#1a1a1a",borderRadius:4,overflow:"hidden"}},
+              e("div",{style:{width:(r[1]*100)+"%",height:"100%",background:r[2],borderRadius:4,opacity:0.7}}))
+          );
+        })
+      ) : null
+    );
+  }
+
+  // Cooccurrence heatmap
+  function HeatmapComp(props) {
+    var ref = useRef();
+    var words = props.words;
+    var matrix = props.matrix;
+    var comms = props.comms;
+    var n = words.length;
+    var cs = Math.min(28, Math.max(14, 500/n));
+    var mg = {top:100,right:20,bottom:20,left:100};
+    useEffect(function() {
+      if (!ref.current || !n) return;
+      var svg = d3.select(ref.current); svg.selectAll("*").remove();
+      var mx = 0;
+      words.forEach(function(a){words.forEach(function(b){if(a!==b) mx=Math.max(mx,(matrix[a]&&matrix[a][b])||0)})});
+      var cl = d3.scaleSequential(d3.interpolateViridis).domain([0,mx]);
+      var g = svg.append("g").attr("transform","translate("+mg.left+","+mg.top+")");
+      words.forEach(function(a,i){words.forEach(function(b,j){
+        var v = (matrix[a]&&matrix[a][b])||0;
+        g.append("rect").attr("x",j*cs).attr("y",i*cs).attr("width",cs-1).attr("height",cs-1).attr("fill",v>0?cl(v):"#111").attr("rx",1).append("title").text(a+"×"+b+":"+v);
+      })});
+      g.selectAll(".xl").data(words).enter().append("text").attr("x",function(_,i){return i*cs+cs/2}).attr("y",-6).attr("text-anchor","end").attr("transform",function(_,i){return"rotate(-55,"+(i*cs+cs/2)+",-6)"}).attr("fill",function(_,i){return CC[comms[i]%CC.length]}).attr("font-size",Math.min(11,cs-2)).attr("font-family","monospace").text(function(d){return d});
+      g.selectAll(".yl").data(words).enter().append("text").attr("x",-6).attr("y",function(_,i){return i*cs+cs/2+4}).attr("text-anchor","end").attr("fill",function(_,i){return CC[comms[i]%CC.length]}).attr("font-size",Math.min(11,cs-2)).attr("font-family","monospace").text(function(d){return d});
+    },[matrix,words,comms]);
+    return e("div",{style:{overflowX:"auto",overflowY:"auto",maxHeight:600}},
+      e("svg",{ref:ref,width:mg.left+n*cs+mg.right,height:mg.top+n*cs+mg.bottom}));
+  }
+
+  // Network (2D for now in the HTML version for reliability)
+  function NetworkComp(props) {
+    var ref = useRef();
+    var words = props.words; var matrix = props.matrix; var comms = props.comms; var fMap = props.fMap;
+    useEffect(function() {
+      if (!ref.current || !words.length) return;
+      var W = 680, H = 480;
+      var svg = d3.select(ref.current); svg.selectAll("*").remove();
+      svg.attr("width",W).attr("height",H).style("background","#0d0d0d").style("border-radius","6px").style("border","1px solid #333");
+      var nodes = words.map(function(w,i){return{id:w,community:comms[i],freq:fMap[w]||1}});
+      var links = []; var mW = 0;
+      for (var i=0;i<words.length;i++) for(var j=i+1;j<words.length;j++){
+        var v=(matrix[words[i]]&&matrix[words[i]][words[j]])||0;
+        if(v>0){links.push({source:words[i],target:words[j],value:v});mW=Math.max(mW,v)}
+      }
+      var maxF = Math.max.apply(null,words.map(function(w){return fMap[w]||1}));
+      var sim = d3.forceSimulation(nodes).force("link",d3.forceLink(links).id(function(d){return d.id}).distance(80).strength(function(d){return d.value/(mW||1)*0.5})).force("charge",d3.forceManyBody().strength(-120)).force("center",d3.forceCenter(W/2,H/2)).force("collision",d3.forceCollide(20));
+      var link = svg.append("g").selectAll("line").data(links).enter().append("line").attr("stroke","#555").attr("stroke-width",function(d){return d3.scaleLinear().domain([1,mW||1]).range([0.3,3])(d.value)}).attr("stroke-opacity",function(d){return d3.scaleLinear().domain([1,mW||1]).range([0.15,0.7])(d.value)});
+      var node = svg.append("g").selectAll("g").data(nodes).enter().append("g").call(d3.drag().on("start",function(ev,d){if(!ev.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y}).on("drag",function(ev,d){d.fx=ev.x;d.fy=ev.y}).on("end",function(ev,d){if(!ev.active)sim.alphaTarget(0);d.fx=null;d.fy=null}));
+      node.append("circle").attr("r",function(d){return 3+(d.freq/maxF)*8}).attr("fill",function(d){return CC[d.community%CC.length]}).attr("stroke","#222").attr("stroke-width",1.5);
+      node.append("text").text(function(d){return d.id}).attr("dx",10).attr("dy",4).attr("fill","#ccc").attr("font-size",11).attr("font-family","monospace");
+      sim.on("tick",function(){
+        link.attr("x1",function(d){return d.source.x}).attr("y1",function(d){return d.source.y}).attr("x2",function(d){return d.target.x}).attr("y2",function(d){return d.target.y});
+        node.attr("transform",function(d){return"translate("+d.x+","+d.y+")"});
+      });
+      return function(){sim.stop()};
+    },[matrix,words,comms,fMap]);
+    return e("svg",{ref:ref});
+  }
+
+  // ══════ MAIN LAYOUT ══════
+  return e("div", {style:{background:"#111",color:"#ddd",fontFamily:"monospace",height:"100vh",display:"flex",flexDirection:"column"}},
+
+    // Header
+    e("div", {style:{padding:"14px 20px",borderBottom:"1px solid #333",display:"flex",alignItems:"center",gap:12}},
+      e("span",{style:{fontSize:18,color:"#4ecdc4",fontWeight:"bold"}},"⬡ Texturas"),
+      e("span",{style:{fontSize:11,color:"#666"}},"v0.6"),
+      eng.vec.isLoaded() ? e("span",{style:{fontSize:11,color:"#82e0aa",marginLeft:"auto"}},"● vec") : null,
+      eng.sent.ready ? e("span",{style:{fontSize:11,color:"#f7dc6f"}},"● sent") : null,
+      eng.pos.ready ? e("span",{style:{fontSize:11,color:"#bb8fce"}},"● nlp") : null,
+      results ? e("span",{style:{fontSize:11,color:"#ccc"}},"● "+Object.keys(results.perDoc).length+" doc"+(Object.keys(results.perDoc).length>1?"s":"")) : null
+    ),
+
+    // Tabs
+    e("div", {style:{display:"flex",borderBottom:"1px solid #333",overflowX:"auto"}},
+      mainTabs.map(function(t) {
+        return e("button",{key:t.id,onClick:function(){setTab(t.id)},
+          style:{padding:"10px 14px",background:tab===t.id?"#1a1a1a":"transparent",color:tab===t.id?"#4ecdc4":"#888",border:"none",borderBottom:tab===t.id?"2px solid #4ecdc4":"2px solid transparent",cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}},t.l);
+      })
+    ),
+
+    // Doc selector
+    results && analysisTabs.indexOf(tab) >= 0 ? e("div",{style:{display:"flex",gap:4,padding:"8px 20px",borderBottom:"1px solid #2a2a2a",background:"#151515",overflowX:"auto"}},
+      validDocs.length > 1 ? e("button",{onClick:function(){setActiveView("aggregate")},style:{padding:"4px 12px",borderRadius:3,border:"1px solid "+(activeView==="aggregate"?"#4ecdc4":"#333"),background:activeView==="aggregate"?"#4ecdc4":"#1a1a1a",color:activeView==="aggregate"?"#111":"#888",fontSize:11,cursor:"pointer",fontWeight:"bold"}},"Aggregate") : null,
+      validDocs.map(function(d){return e("button",{key:d.id,onClick:function(){setActiveView(d.id)},style:{padding:"4px 12px",borderRadius:3,border:"1px solid "+(activeView===d.id?"#45b7d1":"#333"),background:activeView===d.id?"#45b7d1":"#1a1a1a",color:activeView===d.id?"#111":"#888",fontSize:11,cursor:"pointer"}},d.label)})
+    ) : null,
+
+    // Body
+    e("div", {style:{flex:1,display:"flex",overflow:"hidden"}},
+
+      // Sidebar
+      e("div", {style:{width:240,borderRight:"1px solid #333",padding:16,overflowY:"auto",flexShrink:0}},
+        e("div",{style:{fontSize:11,color:"#888",marginBottom:12,textTransform:"uppercase",letterSpacing:1}},"Parameters"),
+        e("label",{style:{fontSize:11,color:"#aaa",display:"block",marginBottom:4}},"Top N: "+topN),
+        e("input",{type:"range",min:10,max:50,value:topN,onChange:function(ev){setTopN(parseInt(ev.target.value))},style:{width:"100%",marginBottom:10}}),
+        e("label",{style:{fontSize:11,color:"#aaa",display:"block",marginBottom:4}},"Window: "+winSize),
+        e("input",{type:"range",min:2,max:15,value:winSize,onChange:function(ev){setWinSize(parseInt(ev.target.value))},style:{width:"100%",marginBottom:10}}),
+        e("button",{onClick:runAnalysis,disabled:!validDocs.length||loading,
+          style:{width:"100%",padding:"8px 0",background:validDocs.length&&!loading?"#4ecdc4":"#333",color:validDocs.length&&!loading?"#111":"#666",border:"none",borderRadius:4,cursor:validDocs.length&&!loading?"pointer":"default",fontSize:13,fontWeight:"bold",marginBottom:8}},
+          "Analyze ("+validDocs.length+" doc"+(validDocs.length!==1?"s":"")+")"),
+        results ? e("div",{style:{marginTop:10,padding:8,background:"#1a1a1a",borderRadius:4,fontSize:10,color:"#888"}},
+          e("div",null,"View: ",e("span",{style:{color:"#4ecdc4"}},activeView==="aggregate"?"Aggregate":docs.find(function(d){return d.id===activeView})?.label||"")),
+          activeA ? e("div",null,"Tokens: ",e("span",{style:{color:"#ccc"}},activeA.tokens.length.toLocaleString())) : null,
+          activeA ? e("div",null,"Lemmas: ",e("span",{style:{color:"#ccc"}},activeA.freqs.length.toLocaleString())) : null,
+          activeA ? e("div",null,"Communities: ",e("span",{style:{color:"#ccc"}},new Set(activeA.comms).size)) : null
+        ) : null,
+        msg ? e("div",{style:{marginTop:6,fontSize:10,color:"#f7dc6f"}},msg) : null
+      ),
+
+      // Content
+      e("div", {style:{flex:1,padding:20,overflowY:"auto"}},
+        tab === "assets" ? renderAssets() : null,
+        tab === "input" ? e("div",null,
+          e("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:12}},
+            e("span",{style:{fontSize:13,color:"#aaa"}},"Documents ("+docs.length+")"),
+            e("button",{onClick:addDoc,style:{padding:"4px 12px",background:"#2a2a2a",color:"#4ecdc4",border:"1px solid #444",borderRadius:4,fontSize:12,cursor:"pointer"}},"+ Add")
+          ),
+          e("div",{style:{display:"flex",gap:4,marginBottom:12,flexWrap:"wrap"}},
+            docs.map(function(d){
+              return e("button",{key:d.id,onClick:function(){setActiveInputDoc(d.id)},
+                style:{padding:"5px 12px",borderRadius:4,border:"1px solid "+(activeInputDoc===d.id?"#45b7d1":"#333"),background:activeInputDoc===d.id?"#1a2a2a":"#1a1a1a",color:activeInputDoc===d.id?"#45b7d1":"#888",fontSize:12,cursor:"pointer"}},
+                d.label,
+                docs.length>1 ? e("span",{onClick:function(ev){ev.stopPropagation();rmDoc(d.id)},style:{marginLeft:8,color:"#666",cursor:"pointer"}},"×") : null
+              );
+            })
+          ),
+          docs.filter(function(d){return d.id===activeInputDoc}).map(function(d){
+            return e("div",{key:d.id},
+              e("input",{type:"text",value:d.label,onChange:function(ev){updDoc(d.id,"label",ev.target.value)},
+                style:{width:300,padding:"6px 10px",background:"#1a1a1a",border:"1px solid #444",borderRadius:4,color:"#ccc",fontSize:13,marginBottom:8,boxSizing:"border-box"}}),
+              e("textarea",{value:d.text,onChange:function(ev){updDoc(d.id,"text",ev.target.value)},
+                placeholder:"Paste text here...",
+                style:{width:"100%",height:"calc(100vh - 320px)",background:"#0d0d0d",border:"1px solid #333",borderRadius:6,color:"#ccc",padding:16,fontSize:13,resize:"none",boxSizing:"border-box",lineHeight:1.6}})
+            );
+          })
+        ) : null,
+        tab === "frequency" && activeA ? renderFreqs() : null,
+        tab === "sentiment" ? renderSentiment() : null,
+        tab === "cooccurrence" && activeA ? e("div",null,
+          e("div",{style:{fontSize:12,color:"#888",marginBottom:12}},"Co-occurrence matrix (window="+winSize+")"),
+          e(HeatmapComp,{matrix:activeA.matrix,words:activeA.topW,comms:activeA.comms})
+        ) : null,
+        tab === "network" && activeA ? e("div",null,
+          e("div",{style:{fontSize:12,color:"#888",marginBottom:12}},"Force-directed network. Drag to explore."),
+          e("div",{style:{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}},
+            Array.from(new Set(activeA.comms)).map(function(c){
+              return e("span",{key:c,style:{fontSize:10,display:"flex",alignItems:"center",gap:3}},
+                e("span",{style:{width:10,height:10,borderRadius:"50%",background:CC[c%CC.length],display:"inline-block"}}),
+                e("span",{style:{color:"#888"}},"C"+(c+1)+": "+activeA.topW.filter(function(_,i){return activeA.comms[i]===c}).join(", "))
+              );
+            })
+          ),
+          e(NetworkComp,{matrix:activeA.matrix,words:activeA.topW,comms:activeA.comms,fMap:activeA.fMap})
+        ) : null,
+        tab === "credits" ? e("div",{style:{maxWidth:700,lineHeight:1.8}},
+          e("h3",{style:{color:"#4ecdc4",fontSize:16,fontWeight:"normal",marginBottom:6}},"Credits & Acknowledgements"),
+          e("p",{style:{fontSize:11,color:"#666",marginBottom:16,fontStyle:"italic"}},"From Latin textura — weaving. The root of \"text.\" Plural: the many woven layers."),
+          e("p",{style:{fontSize:12,color:"#999",marginBottom:20}},
+            e("strong",{style:{color:"#ccc"}},"Texturas v0.6"),
+            " — Multi-layered correlated textual analysis",
+            e("br"),
+            "Ernesto Peña · Northeastern University"
+          ),
+          e("div",{style:{padding:10,background:"#1a1a1a",borderRadius:6,border:"1px solid #333",fontSize:10,color:"#666",lineHeight:1.7}},
+            "Lexicons: NRC EmoLex (Mohammad & Turney, 2013) · NRC Intensity/VAD (Mohammad, 2018) · VADER (Hutto & Gilbert, 2014) · SentiWordNet (Baccianella et al., 2010)",
+            e("br"),
+            "Knowledge bases: Princeton WordNet 3.0 · GloVe (Pennington et al., 2014)",
+            e("br"),
+            "Ethics: Mohammad (2022), Ethics Sheet for Automatic Emotion Recognition."
+          )
+        ) : null,
+        analysisTabs.indexOf(tab) >= 0 && !activeA ? e("div",{style:{color:"#666",textAlign:"center",marginTop:60,fontSize:14}},"← Add documents and click Analyze.") : null
+      )
+    )
+  );
+}
+
+ReactDOM.render(
+  React.createElement(Texturas),
+  document.getElementById("root")
+);
+</script>
+</body>
+</html>
