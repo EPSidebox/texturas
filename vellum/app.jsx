@@ -175,7 +175,14 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
         mesh.position.set((i%gs)*c-HALF+c/2,0,Math.floor(i/gs)*c-HALF+c/2);
         mesh.userData={idx:i};sc.add(mesh);boxes.push(mesh)}
       const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
-      S.sc=sc;S.cam=cam;S.ren=ren;S.boxes=boxes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();
+      // Highlight — top face frame (4 thin strips)
+      const hh=c*.46,fw=c*.04;
+      const hlGroup=new THREE.Group();
+      const hlMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.9,depthTest:false});
+      [[-hh+fw/2,0,fw,c*.92],[hh-fw/2,0,fw,c*.92],[0,-hh+fw/2,c*.92,fw],[0,hh-fw/2,c*.92,fw]].forEach(([ox,oz,sx,sz])=>{
+        const m=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),hlMat);m.rotation.x=-Math.PI/2;m.position.set(ox,0,oz);hlGroup.add(m)});
+      hlGroup.visible=false;hlGroup.renderOrder=999;sc.add(hlGroup);
+      S.sc=sc;S.cam=cam;S.ren=ren;S.boxes=boxes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.hlWire=hlGroup;
       const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);setHov(h.length?h[0].object.userData.idx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
       const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(pinnedIdx===idx?null:idx)}else onPin(null)};
       ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
@@ -206,6 +213,13 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
       else{mesh.material.color.set(0x4ecdc4);mesh.material.opacity=showSize?.15+sizeV[i]*.8:.85}
       if((hov===i||pinnedIdx===i)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===i?.45:.35}else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})},
   [sizeV,colV,volV,showSize,showColor,showVol,hov,pinnedIdx,bins,gs,normMaxes]);
+
+  // Position highlight wireframe
+  useEffect(()=>{const S=stRef.current;if(!S.hlWire||!S.boxes)return;
+    const ai=pinnedIdx!==null?pinnedIdx:hov;
+    if(ai!==null&&bins[ai]&&!bins[ai].empty&&!bins[ai].dimmed){const mesh=S.boxes[ai];S.hlWire.visible=true;S.hlWire.position.set(mesh.position.x,mesh.position.y+mesh.scale.y/2+.02,mesh.position.z)}
+    else{S.hlWire.visible=false}
+  },[hov,pinnedIdx,bins,showVol]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cam)return;const t=showVol?camIso():camFlat();S.tPos.copy(t.pos);S.tUp.copy(t.up)},[showVol]);
 
@@ -246,9 +260,17 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
         cellMeshes.push(subs)}
       const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
       const allMeshes=cellMeshes.flat().map(s=>s.mesh);
-      S.sc=sc;S.cam=cam;S.ren=ren;S.cellMeshes=cellMeshes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.allMeshes=allMeshes;
+      // Highlight — top face frame (4 thin strips)
+      const hh=c*.46,fw=c*.04;
+      const hlGroup=new THREE.Group();
+      const hlMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.9,depthTest:false});
+      [[-hh+fw/2,0,fw,c*.92],[hh-fw/2,0,fw,c*.92],[0,-hh+fw/2,c*.92,fw],[0,hh-fw/2,c*.92,fw]].forEach(([ox,oz,sx,sz])=>{
+        const m=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),hlMat);m.rotation.x=-Math.PI/2;m.position.set(ox,0,oz);hlGroup.add(m)});
+      hlGroup.visible=false;hlGroup.renderOrder=999;sc.add(hlGroup);
+      S.sc=sc;S.cam=cam;S.ren=ren;S.cellMeshes=cellMeshes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.allMeshes=allMeshes;S.hlWire=hlGroup;
       const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);setHov(h.length?h[0].object.userData.cellIdx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
-      ren.domElement.addEventListener("mousemove",onMv);S._onMv=onMv;
+      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+      ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
       const tick=()=>{if(dead)return;frameRef.current=requestAnimationFrame(tick);cam.position.lerp(S.tPos,.06);cam.up.lerp(S.tUp,.06);cam.lookAt(0,0,0);cam.updateProjectionMatrix();ren.render(sc,cam)};tick();
       const onR=()=>{const w=el.clientWidth,h=el.clientHeight;if(w<10||h<10)return;const a=w/h;cam.left=-FRU*a;cam.right=FRU*a;cam.top=FRU;cam.bottom=-FRU;cam.updateProjectionMatrix();ren.setSize(w,h)};
       window.addEventListener("resize",onR);S._onR=onR};
@@ -257,9 +279,8 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
     return()=>{dead=true;cleanup(el,S,frameRef)};
   },[gs,fixedWidth,fixedHeight]);
 
-  // Click handler via ref for fresh pinnedIdx
   const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
-  useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement)return;
+  useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement||!S.allMeshes)return;
     const onClick=e=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((e.clientX-r.left)/r.width)*2-1;S.mouse.y=-((e.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
     if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick);
     S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick;
@@ -287,6 +308,14 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
         if((hov===ci||pinnedIdx===ci)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===ci?.3:.2}
         else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})})},
   [bins,relV,showVol,hov,pinnedIdx,enabledSlots,gs,normMaxes]);
+
+  // Position highlight wireframe
+  useEffect(()=>{const S=stRef.current;if(!S.hlWire||!S.cellMeshes)return;
+    const c=cs(gs),ai=pinnedIdx!==null?pinnedIdx:hov;
+    if(ai!==null&&bins[ai]&&!bins[ai].empty&&!bins[ai].dimmed){const cr=Math.floor(ai/gs),cc=ai%gs;
+      S.hlWire.visible=true;S.hlWire.position.set(cc*c-HALF+c/2,0.08,cr*c-HALF+c/2)}
+    else{S.hlWire.visible=false}
+  },[hov,pinnedIdx,bins,gs]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cam)return;const t=showVol?camIso():camFlat();S.tPos.copy(t.pos);S.tUp.copy(t.up)},[showVol]);
 
