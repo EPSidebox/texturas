@@ -14,6 +14,7 @@ const EMO_LAYOUT = [
 const WORLD=10,HALF=5,FRU=6.5;
 const ISO_ELEV=Math.atan(1/Math.sqrt(2)),ISO_AZI=-Math.PI/4,CAM_D=80,DIM_OP=0.06;
 const VOL_MUL={10:5,20:3.5,30:2};
+const EMO_VOL_MUL={10:1.8,20:1.2,30:0.7};
 
 function cs(gs){return WORLD/gs}
 function camFlat(){return{pos:new THREE.Vector3(0,CAM_D,0.001),up:new THREE.Vector3(0,0,-1)}}
@@ -245,20 +246,22 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
   },[gs,fixedWidth,fixedHeight]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cellMeshes)return;
-    const aroMax=normMaxes?.arousal||1,vm=VOL_MUL[gs]||5;
+    const aroMax=normMaxes?.arousal||1,vm=EMO_VOL_MUL[gs]||1.8;
     S.cellMeshes.forEach((subs,ci)=>{const b=bins[ci];
       subs.forEach(({slot,emo,mesh})=>{
         if(b.empty){mesh.visible=false;return}
         const isCenter=emo===null;const slotKey=isCenter?"center":emo;
         const enabled=enabledSlots.has(slotKey);
-        if(!enabled||b.dimmed){mesh.visible=true;mesh.material.color.set(0x222222);mesh.material.opacity=b.dimmed?DIM_OP:.15;mesh.scale.y=.04;mesh.position.y=.02;mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0;return}
+        if(b.dimmed){mesh.visible=true;mesh.material.color.set(0x222222);mesh.material.opacity=DIM_OP;mesh.scale.y=.04;mesh.position.y=.02;mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0;return}
+        if(!enabled){mesh.visible=true;mesh.material.color.set(0x555555);mesh.material.opacity=.2;mesh.scale.y=.04;mesh.position.y=.02;mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0;return}
         mesh.visible=true;
         let brightness,aro;
         if(isCenter){brightness=relV[ci];aro=b.arousal/aroMax}
         else{const ed=b.emo[emo];brightness=ed?ed.prop:0;aro=ed?(ed.aro/aroMax):0}
+        const vb=brightness>0?0.08+Math.pow(brightness,0.4)*0.92:0;
         const bc=mesh.userData.baseColor;
-        mesh.material.color.setRGB(bc.r*brightness*.85+.05,bc.g*brightness*.85+.05,bc.b*brightness*.85+.05);
-        mesh.material.opacity=.3+brightness*.65;
+        mesh.material.color.setRGB(bc.r*vb*.85+.05,bc.g*vb*.85+.05,bc.b*vb*.85+.05);
+        mesh.material.opacity=.3+vb*.65;
         if(showVol){const h=Math.max(.08,Math.abs(aro)*vm);mesh.scale.y=h;mesh.position.y=aro>=0?h/2:-h/2}
         else{mesh.scale.y=.06;mesh.position.y=.03}
         if((hov===ci||pinned===ci)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinned===ci?.3:.2}
@@ -280,10 +283,10 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
   </div>)}
 
 function EmoToggle({enabledSlots,setEnabledSlots}){
-  const toggle=key=>{setEnabledSlots(prev=>{const n=new Set(prev);if(n.has(key)){if(n.size<=1)return prev;n.delete(key)}else n.add(key);return n})};
+  const toggle=key=>{setEnabledSlots(prev=>{const n=new Set(prev);if(n.has(key))n.delete(key);else n.add(key);return n})};
   return(<div style={{display:"inline-grid",gridTemplateColumns:"repeat(3,10px)",gap:1}}>
     {EMO_LAYOUT.map(({r,c,emo},i)=>{const key=emo||"center";const on=enabledSlots.has(key);const col=emo?EC[emo]:"#ffffff";
-      return(<div key={i} onClick={()=>toggle(key)} title={emo||"relevance"} style={{width:10,height:10,borderRadius:1,background:on?col:"#222",opacity:on?1:.3,cursor:"pointer",border:`1px solid ${on?col+"66":"#333"}`}}/>)})}</div>)}
+      return(<div key={i} onClick={()=>toggle(key)} title={emo||"relevance"} style={{width:10,height:10,borderRadius:1,background:on?col:"#555",opacity:on?1:.5,cursor:"pointer",border:`1px solid ${on?col+"66":"#444"}`}}/>)})}</div>)}
 
 function WordPanel({perDocData,selectedDocIds,filterWords,setFilterWords,sortBy,setSortBy,topN,ngMode,setNgMode}){
   const allActive=filterWords.size===0;
@@ -337,6 +340,13 @@ function Texturas(){
       const va=await loadAsset("l-d","lexicons/vader.json",false,setMsg);if(va&&!c)e.sent.lVdr(va);
       const sw=await loadAsset("l-s","lexicons/sentiwordnet.json",false,setMsg);if(sw&&!c)e.sent.lSwn(sw);
       if(!c){setMsg("");setEngSt(s=>s+1)}})();return()=>{c=true}},[]);
+
+  // Auto-rerun when assets arrive if analysis was already performed
+  const hasRun=useRef(false);
+  useEffect(()=>{if(Object.keys(perDocResults).length>0)hasRun.current=true},[perDocResults]);
+  useEffect(()=>{if(engSt>0&&hasRun.current&&validDocs.length>0){
+    const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,flow)});
+    setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words")}},[engSt]);
 
   const addDoc=()=>{const id=`d${Date.now()}`;setDocs(d=>[...d,{id,label:`Document ${d.length+1}`,text:""}]);setActiveInputDoc(id)};
   const rmDoc=id=>{if(docs.length<=1)return;setDocs(d=>d.filter(x=>x.id!==id));if(activeInputDoc===id)setActiveInputDoc(docs[0]?.id);setSelectedViewDocs(prev=>{const n=new Set(prev);n.delete(id);return n})};
