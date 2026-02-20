@@ -5,11 +5,7 @@ const STOP_WORDS = new Set(["the","a","an","and","or","but","in","on","at","to",
 const NEGATION = new Set(["not","no","never","neither","nor","don't","doesn't","didn't","won't","wouldn't","can't","couldn't","shouldn't","isn't","aren't","wasn't","weren't","haven't","hasn't","hadn't","cannot","nothing","nobody","none","nowhere"]);
 const EMOTIONS = ["anger","anticipation","disgust","fear","joy","sadness","surprise","trust"];
 const EC = {anger:"#ff6b6b",anticipation:"#f7dc6f",disgust:"#bb8fce",fear:"#85c1e9",joy:"#82e0aa",sadness:"#45b7d1",surprise:"#f0b27a",trust:"#4ecdc4"};
-const EMO_LAYOUT = [
-  {r:0,c:0,emo:"anticipation"},{r:0,c:1,emo:"joy"},{r:0,c:2,emo:"trust"},
-  {r:1,c:0,emo:"anger"},{r:1,c:1,emo:null},{r:1,c:2,emo:"fear"},
-  {r:2,c:0,emo:"disgust"},{r:2,c:1,emo:"sadness"},{r:2,c:2,emo:"surprise"}
-];
+const EMO_LAYOUT = [{r:0,c:0,emo:"anticipation"},{r:0,c:1,emo:"joy"},{r:0,c:2,emo:"trust"},{r:1,c:0,emo:"anger"},{r:1,c:1,emo:null},{r:1,c:2,emo:"fear"},{r:2,c:0,emo:"disgust"},{r:2,c:1,emo:"sadness"},{r:2,c:2,emo:"surprise"}];
 
 const WORLD=10,HALF=5,FRU=6.5;
 const ISO_ELEV=Math.atan(1/Math.sqrt(2)),ISO_AZI=-Math.PI/4,CAM_D=80,DIM_OP=0.06;
@@ -17,7 +13,7 @@ const VOL_MUL={10:5,20:3.5,30:2};
 const EMO_VOL_CAP=0.5;
 const EMO_BRIGHT_K=15;
 
-function cs(gs){return WORLD/gs}
+function cellSz(gs){return WORLD/gs}
 function camFlat(){return{pos:new THREE.Vector3(0,CAM_D,0.001),up:new THREE.Vector3(0,0,-1)}}
 function camIso(){return{pos:new THREE.Vector3(CAM_D*Math.cos(ISO_ELEV)*Math.sin(ISO_AZI),CAM_D*Math.sin(ISO_ELEV),CAM_D*Math.cos(ISO_ELEV)*Math.cos(ISO_AZI)),up:new THREE.Vector3(0,1,0)}}
 function emoBright(p){return p>0?(Math.log(1+p*EMO_BRIGHT_K)/Math.log(1+EMO_BRIGHT_K)):0}
@@ -45,8 +41,8 @@ function spreadAct(fMap,syn,pos,depth,decay,flow){
   for(const l of corpus)scores[l]=fMap[l]||0;
   for(const[l,f]of Object.entries(fMap)){if(f===0)continue;const p=pos.ready?pos.tag(l):"n";
     let front=[{w:l,p}],vis=new Set([l]);
-    for(let h=1;h<=depth;h++){const nf=[];for(const nd of front){const r=syn.getRels(nd.w,nd.p);
-      const tgts=flow==="up"?r.h:flow==="down"?r.y:[...r.h,...r.y,...r.m];
+    for(let h=1;h<=depth;h++){const nf=[];for(const nd of front){const rl=syn.getRels(nd.w,nd.p);
+      const tgts=flow==="up"?rl.h:flow==="down"?rl.y:[...rl.h,...rl.y,...rl.m];
       for(const t of tgts){if(vis.has(t))continue;vis.add(t);const amt=f*Math.pow(decay,h);
         if(corpus.has(t))scores[t]=(scores[t]||0)+amt;nf.push({w:t,p:pos.ready?pos.tag(t):"n"})}}front=nf}}
   return scores}
@@ -79,9 +75,9 @@ function vellumBins(enriched,gs,filterSet,ngMode,ngFreqMap){
   if(hasFilter&&isNg){ngramPos=new Set();for(const occ of ngOcc){if(!filterSet.has(occ.key))continue;
     const fi=filtPos.findIndex(fp=>fp.idx===occ.startIdx);if(fi<0)continue;for(let k=0;k<ngN&&fi+k<filtPos.length;k++)ngramPos.add(filtPos[fi+k].idx)}}
   function ngFR(s,e){const fs=[];for(const o of ngOcc){if(o.startIdx>=s&&o.startIdx<e)fs.push(o.freq)}return fs}
-  function computeEmo(match){const ed={};EMOTIONS.forEach(e=>{const wE=match.filter(t=>t.emolex&&t.emolex[e]);
+  function computeEmo(match){const ed={};EMOTIONS.forEach(em=>{const wE=match.filter(t=>t.emolex&&t.emolex[em]);
     const aros=wE.map(t=>t.arousal).filter(v=>v!==null);
-    ed[e]={prop:match.length?wE.length/match.length:0,aro:aros.length?_.mean(aros):0}});return ed}
+    ed[em]={prop:match.length?wE.length/match.length:0,aro:aros.length?_.mean(aros):0}});return ed}
   if(tw<=cells){for(let i=0;i<cells;i++){const tok=enriched[i];
     if(!tok){bins.push({i,empty:true,w:0,words:new Set(),rel:0,vader:0,arousal:0,topW:[],dimmed:false,wList:[],fullText:[],emo:{}});continue}
     const words=new Set(tok.stop?[]:[tok.lemma]);let dimmed=false,match=[];
@@ -127,14 +123,21 @@ function buildScene(W,H,gs,isVol){
   sc.add(new THREE.AmbientLight(0xffffff,0.45));
   const dl=new THREE.DirectionalLight(0xffffff,0.85);dl.position.set(-5,15,-8);sc.add(dl);
   const dl2=new THREE.DirectionalLight(0x8899bb,0.3);dl2.position.set(8,10,6);sc.add(dl2);
-  const c=cs(gs),gm=new THREE.LineBasicMaterial({color:0x1a1a1a});
+  const c=cellSz(gs),gm=new THREE.LineBasicMaterial({color:0x1a1a1a});
   for(let i=0;i<=gs;i++){const p=i*c-HALF;
     sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p,-.01,-HALF),new THREE.Vector3(p,-.01,HALF)]),gm));
     sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-HALF,-.01,p),new THREE.Vector3(HALF,-.01,p)]),gm))}
   const pl=new THREE.Mesh(new THREE.PlaneGeometry(WORLD+.2,WORLD+.2),new THREE.MeshPhongMaterial({color:0x0f0f0f}));pl.rotation.x=-Math.PI/2;pl.position.y=-.02;sc.add(pl);
-  return{sc,cam,ren,c}}
+  // Highlight frame — 4 thin strips, ground level, always on top
+  const hh=c*.46,fw=c*.04;
+  const hlGroup=new THREE.Group();
+  const hlMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.9,depthTest:false});
+  [[-hh+fw/2,0,fw,c*.92],[hh-fw/2,0,fw,c*.92],[0,-hh+fw/2,c*.92,fw],[0,hh-fw/2,c*.92,fw]].forEach(([ox,oz,sx,sz])=>{
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),hlMat);m.rotation.x=-Math.PI/2;m.position.set(ox,0,oz);hlGroup.add(m)});
+  hlGroup.visible=false;hlGroup.renderOrder=999;sc.add(hlGroup);
+  return{sc,cam,ren,c,hlGroup}}
 
-function cleanup(el,S,fr){
+function doCleanup(el,S,fr){
   cancelAnimationFrame(fr.current);
   if(S._onR)window.removeEventListener("resize",S._onR);
   if(S.ren?.domElement){if(S._onMv)S.ren.domElement.removeEventListener("mousemove",S._onMv);if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick)}
@@ -142,15 +145,15 @@ function cleanup(el,S,fr){
   if(S.ren)S.ren.dispose()}
 
 // ── Shared tooltip ──
-function VellumTooltip({ai,bins,gs,pinned,topNSet,showSize,showColor,showVol,ngMode,onDismiss}){
+function VellumTooltip({ai,bins,gs,pinned,topNSet,ngMode,onDismiss}){
   const ab=ai!==null?bins[ai]:null;if(!ab||ab.empty||ab.dimmed)return null;
   const ip=pinned;const nm=ngMode||"words";
-  const emos=EMOTIONS.filter(e=>ab.emo[e]?.prop>0);
-  return(<div onClick={e=>{if(ip){e.stopPropagation();onDismiss()}}} style={{position:"absolute",top:8,left:8,padding:"8px 12px",background:ip?"#111111ee":"#111111aa",border:`1px solid ${ip?"#4ecdc4":"#333"}`,borderRadius:6,fontFamily:"monospace",fontSize:10,pointerEvents:ip?"auto":"none",maxWidth:ip?300:220,maxHeight:ip?300:120,overflowY:ip?"auto":"hidden",zIndex:3,cursor:ip?"pointer":"default",backdropFilter:"blur(2px)"}}>
+  const emos=EMOTIONS.filter(em=>ab.emo[em]?.prop>0);
+  return(<div onClick={ev=>{if(ip){ev.stopPropagation();onDismiss()}}} style={{position:"absolute",top:8,left:8,padding:"8px 12px",background:ip?"#111111ee":"#111111aa",border:`1px solid ${ip?"#4ecdc4":"#333"}`,borderRadius:6,fontFamily:"monospace",fontSize:10,pointerEvents:ip?"auto":"none",maxWidth:ip?300:220,maxHeight:ip?300:120,overflowY:ip?"auto":"hidden",zIndex:3,cursor:ip?"pointer":"default",backdropFilter:"blur(2px)"}}>
     <div style={{color:"#4ecdc4",fontSize:12,marginBottom:3}}>[{Math.floor(ai/gs)+1},{(ai%gs)+1}] <span style={{color:"#555",fontSize:9}}>{((ai/(gs*gs))*100).toFixed(1)}% · {ab.w}w</span>{ip&&<span style={{color:"#555",fontSize:9}}> · dismiss</span>}</div>
     <div style={{color:"#888"}}>Rel: <span style={{color:"#4ecdc4"}}>{ab.rel.toFixed(2)}</span> · V: <span style={{color:ab.vader>.05?"#82e0aa":ab.vader<-.05?"#ff6b6b":"#666"}}>{ab.vader>0?"+":""}{ab.vader.toFixed(3)}</span> · A: <span style={{color:ab.arousal>0?"#f7dc6f":ab.arousal<0?"#45b7d1":"#666"}}>{ab.arousal>0?"+":""}{ab.arousal.toFixed(3)}</span></div>
-    {emos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>{emos.map(e=>(<span key={e} style={{fontSize:9,color:EC[e]}}>{e.slice(0,3)}:{(ab.emo[e].prop*100).toFixed(0)}%</span>))}</div>}
-    {ip&&ab.fullText&&(<div style={{marginTop:5,borderTop:"1px solid #2a2a2a",paddingTop:4,fontSize:10,lineHeight:1.6}}>{Array.isArray(ab.fullText)&&typeof ab.fullText[0]==="object"?ab.fullText.map((t,j)=>{const h=topNSet.has(t.lemma);return(<span key={j}>{j>0?" ":""}<span style={{color:t.stop?"#444":h?"#4ecdc4":"#888",fontWeight:h?"bold":"normal"}}>{t.surface}</span></span>)}):<span style={{color:"#888"}}>{String(ab.fullText)}</span>}</div>)}
+    {emos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>{emos.map(em=>(<span key={em} style={{fontSize:9,color:EC[em]}}>{em.slice(0,3)}:{(ab.emo[em].prop*100).toFixed(0)}%</span>))}</div>}
+    {ip&&ab.fullText&&(<div style={{marginTop:5,borderTop:"1px solid #2a2a2a",paddingTop:4,fontSize:10,lineHeight:1.6}}>{Array.isArray(ab.fullText)&&typeof ab.fullText[0]==="object"?ab.fullText.map((t,j)=>{const hl=topNSet.has(t.lemma);return(<span key={j}>{j>0?" ":""}<span style={{color:t.stop?"#444":hl?"#4ecdc4":"#888",fontWeight:hl?"bold":"normal"}}>{t.surface}</span></span>)}):<span style={{color:"#888"}}>{String(ab.fullText)}</span>}</div>)}
   </div>)}
 
 // ── CHANNELS ──
@@ -158,6 +161,7 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
   const cRef=useRef(),stRef=useRef({}),frameRef=useRef();
   const[hov,setHov]=useState(null);
   const svRef=useRef(showVol);svRef.current=showVol;
+  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
   const topNSet=useMemo(()=>new Set((topNWords||[]).map(([w])=>w)),[topNWords]);
   const sizeV=useMemo(()=>normArr(bins.map(b=>b.rel),scale,normMaxes?.rel),[bins,scale,normMaxes]);
   const colV=useMemo(()=>bins.map(b=>b.vader),[bins]);
@@ -165,42 +169,32 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
 
   useEffect(()=>{
     const el=cRef.current;if(!el)return;const S=stRef.current;
-    if(S.ren)cleanup(el,S,frameRef);
+    if(S.ren)doCleanup(el,S,frameRef);
     let dead=false;
     const build=(W,H)=>{if(dead||W<10||H<10)return;
-      const{sc,cam,ren,c}=buildScene(W,H,gs,svRef.current);
+      const{sc,cam,ren,c,hlGroup}=buildScene(W,H,gs,svRef.current);
       el.appendChild(ren.domElement);
       const geo=new THREE.BoxGeometry(c*.9,1,c*.9),boxes=[];
       for(let i=0;i<gs*gs;i++){const mat=new THREE.MeshPhongMaterial({color:0x4ecdc4,transparent:true,opacity:.85,shininess:50});const mesh=new THREE.Mesh(geo,mat);
         mesh.position.set((i%gs)*c-HALF+c/2,0,Math.floor(i/gs)*c-HALF+c/2);
         mesh.userData={idx:i};sc.add(mesh);boxes.push(mesh)}
       const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
-      // Highlight — top face frame (4 thin strips)
-      const hh=c*.46,fw=c*.04;
-      const hlGroup=new THREE.Group();
-      const hlMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.9,depthTest:false});
-      [[-hh+fw/2,0,fw,c*.92],[hh-fw/2,0,fw,c*.92],[0,-hh+fw/2,c*.92,fw],[0,hh-fw/2,c*.92,fw]].forEach(([ox,oz,sx,sz])=>{
-        const m=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),hlMat);m.rotation.x=-Math.PI/2;m.position.set(ox,0,oz);hlGroup.add(m)});
-      hlGroup.visible=false;hlGroup.renderOrder=999;sc.add(hlGroup);
       S.sc=sc;S.cam=cam;S.ren=ren;S.boxes=boxes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.hlWire=hlGroup;
-      const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);setHov(h.length?h[0].object.userData.idx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
-      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(pinnedIdx===idx?null:idx)}else onPin(null)};
+      const onMv=ev=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((ev.clientX-r.left)/r.width)*2-1;mouse.y=-((ev.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);setHov(h.length?h[0].object.userData.idx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
+      const onClick=ev=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((ev.clientX-r.left)/r.width)*2-1;mouse.y=-((ev.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
       ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
       const tick=()=>{if(dead)return;frameRef.current=requestAnimationFrame(tick);cam.position.lerp(S.tPos,.06);cam.up.lerp(S.tUp,.06);cam.lookAt(0,0,0);cam.updateProjectionMatrix();ren.render(sc,cam)};tick();
       const onR=()=>{const w=el.clientWidth,h=el.clientHeight;if(w<10||h<10)return;const a=w/h;cam.left=-FRU*a;cam.right=FRU*a;cam.top=FRU;cam.bottom=-FRU;cam.updateProjectionMatrix();ren.setSize(w,h)};
       window.addEventListener("resize",onR);S._onR=onR};
     if(fixedWidth&&fixedHeight)requestAnimationFrame(()=>build(fixedWidth,fixedHeight));
-    else{const ro=new ResizeObserver(en=>{const{width:w,height:h}=en[0].contentRect;if(w>10&&h>10){ro.disconnect();build(Math.round(w),Math.round(h))}});ro.observe(el);return()=>{dead=true;ro.disconnect();cleanup(el,S,frameRef)}}
-    return()=>{dead=true;cleanup(el,S,frameRef)};
+    else{const ro=new ResizeObserver(en=>{const{width:w,height:h}=en[0].contentRect;if(w>10&&h>10){ro.disconnect();build(Math.round(w),Math.round(h))}});ro.observe(el);return()=>{dead=true;ro.disconnect();doCleanup(el,S,frameRef)}}
+    return()=>{dead=true;doCleanup(el,S,frameRef)};
   },[gs,fixedWidth,fixedHeight]);
 
-  // Click handler reads pinnedIdx via ref to avoid stale closure
-  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
   useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement)return;
-    const onClick=e=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((e.clientX-r.left)/r.width)*2-1;S.mouse.y=-((e.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+    const onClick=ev=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((ev.clientX-r.left)/r.width)*2-1;S.mouse.y=-((ev.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
     if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick);
-    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick;
-  },[onPin]);
+    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick},[onPin]);
 
   useEffect(()=>{const S=stRef.current;if(!S.boxes||S.boxes.length!==bins.length)return;
     const vm=VOL_MUL[gs]||5;
@@ -211,13 +205,12 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
       if(b.dimmed){mesh.material.opacity=DIM_OP;mesh.material.color.set(0x222222)}
       else if(showColor){const v=colV[i]/(normMaxes?.vader||.01);if(v>.05)mesh.material.color.setHSL(.38,.65,.3+Math.min(v,1)*.35);else if(v<-.05)mesh.material.color.setHSL(0,.65,.3+Math.min(Math.abs(v),1)*.35);else mesh.material.color.set(0x444444);mesh.material.opacity=showSize?.15+sizeV[i]*.8:.85}
       else{mesh.material.color.set(0x4ecdc4);mesh.material.opacity=showSize?.15+sizeV[i]*.8:.85}
-      if((hov===i||pinnedIdx===i)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===i?.45:.35}else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})},
-  [sizeV,colV,volV,showSize,showColor,showVol,hov,pinnedIdx,bins,gs,normMaxes]);
+      if((hov===i||pinnedIdx===i)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===i?.45:.35}else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})
+  },[sizeV,colV,volV,showSize,showColor,showVol,hov,pinnedIdx,bins,gs,normMaxes]);
 
-  // Position highlight wireframe
   useEffect(()=>{const S=stRef.current;if(!S.hlWire||!S.boxes)return;
     const ai=pinnedIdx!==null?pinnedIdx:hov;
-    if(ai!==null&&bins[ai]&&!bins[ai].empty&&!bins[ai].dimmed){const mesh=S.boxes[ai];S.hlWire.visible=true;S.hlWire.position.set(mesh.position.x,mesh.position.y+mesh.scale.y/2+.02,mesh.position.z)}
+    if(ai!==null&&bins[ai]&&!bins[ai].empty&&!bins[ai].dimmed){const mesh=S.boxes[ai];S.hlWire.visible=true;S.hlWire.position.set(mesh.position.x,0.08,mesh.position.z)}
     else{S.hlWire.visible=false}
   },[hov,pinnedIdx,bins,showVol]);
 
@@ -226,7 +219,7 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
   const ai=pinnedIdx!==null?pinnedIdx:hov;
   return(<div style={{position:"relative",width:"100%",height:"100%"}}>{label&&<div style={{position:"absolute",top:8,right:10,fontSize:11,color:"#45b7d1",fontFamily:"monospace",zIndex:2,pointerEvents:"none"}}>{label}</div>}
     <div ref={cRef} style={{width:"100%",height:"100%",minHeight:200,borderRadius:6,overflow:"hidden",border:"1px solid #2a2a2a"}}/>
-    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} showSize={showSize} showColor={showColor} showVol={showVol} ngMode={ngMode} onDismiss={()=>onPin(null)}/>
+    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} ngMode={ngMode} onDismiss={()=>onPin(null)}/>
     <div style={{position:"absolute",bottom:6,left:8,fontSize:9,color:"#333",fontFamily:"monospace"}}>{gs}²</div>
   </div>)}
 
@@ -235,15 +228,16 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
   const cRef=useRef(),stRef=useRef({}),frameRef=useRef();
   const[hov,setHov]=useState(null);
   const svRef=useRef(showVol);svRef.current=showVol;
+  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
   const topNSet=useMemo(()=>new Set((topNWords||[]).map(([w])=>w)),[topNWords]);
   const relV=useMemo(()=>normArr(bins.map(b=>b.rel),scale,normMaxes?.rel),[bins,scale,normMaxes]);
 
   useEffect(()=>{
     const el=cRef.current;if(!el)return;const S=stRef.current;
-    if(S.ren)cleanup(el,S,frameRef);
+    if(S.ren)doCleanup(el,S,frameRef);
     let dead=false;
     const build=(W,H)=>{if(dead||W<10||H<10)return;
-      const{sc,cam,ren,c}=buildScene(W,H,gs,svRef.current);
+      const{sc,cam,ren,c,hlGroup}=buildScene(W,H,gs,svRef.current);
       el.appendChild(ren.domElement);
       const subSz=c*0.28,subSp=c*0.33,geo=new THREE.BoxGeometry(subSz,1,subSz);
       const cellMeshes=[];
@@ -260,31 +254,22 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
         cellMeshes.push(subs)}
       const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
       const allMeshes=cellMeshes.flat().map(s=>s.mesh);
-      // Highlight — top face frame (4 thin strips)
-      const hh=c*.46,fw=c*.04;
-      const hlGroup=new THREE.Group();
-      const hlMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.9,depthTest:false});
-      [[-hh+fw/2,0,fw,c*.92],[hh-fw/2,0,fw,c*.92],[0,-hh+fw/2,c*.92,fw],[0,hh-fw/2,c*.92,fw]].forEach(([ox,oz,sx,sz])=>{
-        const m=new THREE.Mesh(new THREE.PlaneGeometry(sx,sz),hlMat);m.rotation.x=-Math.PI/2;m.position.set(ox,0,oz);hlGroup.add(m)});
-      hlGroup.visible=false;hlGroup.renderOrder=999;sc.add(hlGroup);
       S.sc=sc;S.cam=cam;S.ren=ren;S.cellMeshes=cellMeshes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.allMeshes=allMeshes;S.hlWire=hlGroup;
-      const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);setHov(h.length?h[0].object.userData.cellIdx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
-      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+      const onMv=ev=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((ev.clientX-r.left)/r.width)*2-1;mouse.y=-((ev.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);setHov(h.length?h[0].object.userData.cellIdx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
+      const onClick=ev=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((ev.clientX-r.left)/r.width)*2-1;mouse.y=-((ev.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
       ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
       const tick=()=>{if(dead)return;frameRef.current=requestAnimationFrame(tick);cam.position.lerp(S.tPos,.06);cam.up.lerp(S.tUp,.06);cam.lookAt(0,0,0);cam.updateProjectionMatrix();ren.render(sc,cam)};tick();
       const onR=()=>{const w=el.clientWidth,h=el.clientHeight;if(w<10||h<10)return;const a=w/h;cam.left=-FRU*a;cam.right=FRU*a;cam.top=FRU;cam.bottom=-FRU;cam.updateProjectionMatrix();ren.setSize(w,h)};
       window.addEventListener("resize",onR);S._onR=onR};
     if(fixedWidth&&fixedHeight)requestAnimationFrame(()=>build(fixedWidth,fixedHeight));
-    else{const ro=new ResizeObserver(en=>{const{width:w,height:h}=en[0].contentRect;if(w>10&&h>10){ro.disconnect();build(Math.round(w),Math.round(h))}});ro.observe(el);return()=>{dead=true;ro.disconnect();cleanup(el,S,frameRef)}}
-    return()=>{dead=true;cleanup(el,S,frameRef)};
+    else{const ro=new ResizeObserver(en=>{const{width:w,height:h}=en[0].contentRect;if(w>10&&h>10){ro.disconnect();build(Math.round(w),Math.round(h))}});ro.observe(el);return()=>{dead=true;ro.disconnect();doCleanup(el,S,frameRef)}}
+    return()=>{dead=true;doCleanup(el,S,frameRef)};
   },[gs,fixedWidth,fixedHeight]);
 
-  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
   useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement||!S.allMeshes)return;
-    const onClick=e=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((e.clientX-r.left)/r.width)*2-1;S.mouse.y=-((e.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+    const onClick=ev=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((ev.clientX-r.left)/r.width)*2-1;S.mouse.y=-((ev.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
     if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick);
-    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick;
-  },[onPin]);
+    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick},[onPin]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cellMeshes)return;
     const aroMax=normMaxes?.arousal||1;
@@ -306,12 +291,11 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
         if(showVol){const h=Math.min(EMO_VOL_CAP,Math.max(.06,Math.abs(aro)*3));mesh.scale.y=h;mesh.position.y=aro>=0?h/2:-h/2}
         else{mesh.scale.y=.06;mesh.position.y=.03}
         if((hov===ci||pinnedIdx===ci)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===ci?.3:.2}
-        else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})})},
-  [bins,relV,showVol,hov,pinnedIdx,enabledSlots,gs,normMaxes]);
+        else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})})
+  },[bins,relV,showVol,hov,pinnedIdx,enabledSlots,gs,normMaxes]);
 
-  // Position highlight wireframe
   useEffect(()=>{const S=stRef.current;if(!S.hlWire||!S.cellMeshes)return;
-    const c=cs(gs),ai=pinnedIdx!==null?pinnedIdx:hov;
+    const c=cellSz(gs);const ai=pinnedIdx!==null?pinnedIdx:hov;
     if(ai!==null&&bins[ai]&&!bins[ai].empty&&!bins[ai].dimmed){const cr=Math.floor(ai/gs),cc=ai%gs;
       S.hlWire.visible=true;S.hlWire.position.set(cc*c-HALF+c/2,0.08,cr*c-HALF+c/2)}
     else{S.hlWire.visible=false}
@@ -322,7 +306,7 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
   const ai=pinnedIdx!==null?pinnedIdx:hov;
   return(<div style={{position:"relative",width:"100%",height:"100%"}}>{label&&<div style={{position:"absolute",top:8,right:10,fontSize:11,color:"#45b7d1",fontFamily:"monospace",zIndex:2,pointerEvents:"none"}}>{label}</div>}
     <div ref={cRef} style={{width:"100%",height:"100%",minHeight:200,borderRadius:6,overflow:"hidden",border:"1px solid #2a2a2a"}}/>
-    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} showSize={false} showColor={false} showVol={showVol} ngMode="words" onDismiss={()=>onPin(null)}/>
+    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} ngMode="words" onDismiss={()=>onPin(null)}/>
     <div style={{position:"absolute",bottom:6,left:8,fontSize:9,color:"#333",fontFamily:"monospace"}}>{gs}² emotions</div>
   </div>)}
 
@@ -370,7 +354,6 @@ function Texturas(){
   const[loading,setLoading]=useState(false);const[msg,setMsg]=useState("");const[engSt,setEngSt]=useState(0);const[showParams,setShowParams]=useState(false);
   const[vellumPage,setVellumPage]=useState("channels");
   const[enabledSlots,setEnabledSlots]=useState(new Set([...EMOTIONS,"center"]));
-  // Pin state lifted — persists across page toggles. Map of docId -> cellIdx
   const[pinnedCells,setPinnedCells]=useState({});
   const pinFor=useCallback((docId)=>(idx)=>setPinnedCells(prev=>({...prev,[docId]:idx})),[]);
 
@@ -388,7 +371,6 @@ function Texturas(){
       const sw=await loadAsset("l-s","lexicons/sentiwordnet.json",false,setMsg);if(sw&&!c)e.sent.lSwn(sw);
       if(!c){setMsg("");setEngSt(s=>s+1)}})();return()=>{c=true}},[]);
 
-  // Auto-rerun when assets arrive
   const hasRun=useRef(false);
   useEffect(()=>{if(Object.keys(perDocResults).length>0)hasRun.current=true},[perDocResults]);
   useEffect(()=>{if(engSt>0&&hasRun.current&&docs.filter(d=>d.text.trim()).length>0){
@@ -408,7 +390,7 @@ function Texturas(){
     setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,flow)});
       setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words");setSelectedViewDocs(new Set([validDocs[0].id]));setPinnedCells({});setLoading(false);setMsg("");setTab("vellum")},50)},[docs,topN,wnDepth,decay,flow]);
 
-  const handleDocClick=(id,e)=>{if(e.ctrlKey||e.metaKey){setSelectedViewDocs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);if(n.size===0)n.add(id);return n})}else setSelectedViewDocs(new Set([id]))};
+  const handleDocClick=(id,ev)=>{if(ev.ctrlKey||ev.metaKey){setSelectedViewDocs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);if(n.size===0)n.add(id);return n})}else setSelectedViewDocs(new Set([id]))};
   const rerunFlow=v=>{setFlow(v);setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,v)});setPerDocResults(pdr);setFilterWords(new Set())},50)};
   const rerunTopN=useCallback(n=>{setTopN(n);if(!validDocs.length)return;setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,n,wnDepth,decay,flow)});setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words")},50)},[docs,wnDepth,decay,flow]);
 
