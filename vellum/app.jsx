@@ -14,11 +14,13 @@ const EMO_LAYOUT = [
 const WORLD=10,HALF=5,FRU=6.5;
 const ISO_ELEV=Math.atan(1/Math.sqrt(2)),ISO_AZI=-Math.PI/4,CAM_D=80,DIM_OP=0.06;
 const VOL_MUL={10:5,20:3.5,30:2};
-const EMO_VOL_MUL={10:1.8,20:1.2,30:0.7};
+const EMO_VOL_CAP=0.5;
+const EMO_BRIGHT_K=15;
 
 function cs(gs){return WORLD/gs}
 function camFlat(){return{pos:new THREE.Vector3(0,CAM_D,0.001),up:new THREE.Vector3(0,0,-1)}}
 function camIso(){return{pos:new THREE.Vector3(CAM_D*Math.cos(ISO_ELEV)*Math.sin(ISO_AZI),CAM_D*Math.sin(ISO_ELEV),CAM_D*Math.cos(ISO_ELEV)*Math.cos(ISO_AZI)),up:new THREE.Vector3(0,1,0)}}
+function emoBright(p){return p>0?(Math.log(1+p*EMO_BRIGHT_K)/Math.log(1+EMO_BRIGHT_K)):0}
 
 class POSTagger{constructor(){this.lk=null;this.ready=false}load(d){this.lk=d;this.ready=true}
 sfx=[["tion","n"],["sion","n"],["ment","n"],["ness","n"],["ity","n"],["ance","n"],["ence","n"],["ism","n"],["ist","n"],["ting","v"],["sing","v"],["ning","v"],["ing","v"],["ated","v"],["ized","v"],["ed","v"],["ize","v"],["ify","v"],["ously","r"],["ively","r"],["fully","r"],["ally","r"],["ly","r"],["ful","a"],["ous","a"],["ive","a"],["able","a"],["ible","a"],["ical","a"],["less","a"],["al","a"]];
@@ -139,17 +141,27 @@ function cleanup(el,S,fr){
   if(S.ren&&el&&el.contains(S.ren.domElement))el.removeChild(S.ren.domElement);
   if(S.ren)S.ren.dispose()}
 
+// ── Shared tooltip ──
+function VellumTooltip({ai,bins,gs,pinned,topNSet,showSize,showColor,showVol,ngMode,onDismiss}){
+  const ab=ai!==null?bins[ai]:null;if(!ab||ab.empty||ab.dimmed)return null;
+  const ip=pinned;const nm=ngMode||"words";
+  const emos=EMOTIONS.filter(e=>ab.emo[e]?.prop>0);
+  return(<div onClick={e=>{if(ip){e.stopPropagation();onDismiss()}}} style={{position:"absolute",top:8,left:8,padding:"8px 12px",background:ip?"#111111ee":"#111111aa",border:`1px solid ${ip?"#4ecdc4":"#333"}`,borderRadius:6,fontFamily:"monospace",fontSize:10,pointerEvents:ip?"auto":"none",maxWidth:ip?300:220,maxHeight:ip?300:120,overflowY:ip?"auto":"hidden",zIndex:3,cursor:ip?"pointer":"default",backdropFilter:"blur(2px)"}}>
+    <div style={{color:"#4ecdc4",fontSize:12,marginBottom:3}}>[{Math.floor(ai/gs)+1},{(ai%gs)+1}] <span style={{color:"#555",fontSize:9}}>{((ai/(gs*gs))*100).toFixed(1)}% · {ab.w}w</span>{ip&&<span style={{color:"#555",fontSize:9}}> · dismiss</span>}</div>
+    <div style={{color:"#888"}}>Rel: <span style={{color:"#4ecdc4"}}>{ab.rel.toFixed(2)}</span> · V: <span style={{color:ab.vader>.05?"#82e0aa":ab.vader<-.05?"#ff6b6b":"#666"}}>{ab.vader>0?"+":""}{ab.vader.toFixed(3)}</span> · A: <span style={{color:ab.arousal>0?"#f7dc6f":ab.arousal<0?"#45b7d1":"#666"}}>{ab.arousal>0?"+":""}{ab.arousal.toFixed(3)}</span></div>
+    {emos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:3}}>{emos.map(e=>(<span key={e} style={{fontSize:9,color:EC[e]}}>{e.slice(0,3)}:{(ab.emo[e].prop*100).toFixed(0)}%</span>))}</div>}
+    {ip&&ab.fullText&&(<div style={{marginTop:5,borderTop:"1px solid #2a2a2a",paddingTop:4,fontSize:10,lineHeight:1.6}}>{Array.isArray(ab.fullText)&&typeof ab.fullText[0]==="object"?ab.fullText.map((t,j)=>{const h=topNSet.has(t.lemma);return(<span key={j}>{j>0?" ":""}<span style={{color:t.stop?"#444":h?"#4ecdc4":"#888",fontWeight:h?"bold":"normal"}}>{t.surface}</span></span>)}):<span style={{color:"#888"}}>{String(ab.fullText)}</span>}</div>)}
+  </div>)}
+
 // ── CHANNELS ──
-function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes,label,ngMode,fixedWidth,fixedHeight,topNWords}){
+function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes,label,ngMode,fixedWidth,fixedHeight,topNWords,pinnedIdx,onPin}){
   const cRef=useRef(),stRef=useRef({}),frameRef=useRef();
-  const[hov,setHov]=useState(null);const[pinned,setPinned]=useState(null);
-  const nm=ngMode||"words";
+  const[hov,setHov]=useState(null);
   const svRef=useRef(showVol);svRef.current=showVol;
   const topNSet=useMemo(()=>new Set((topNWords||[]).map(([w])=>w)),[topNWords]);
   const sizeV=useMemo(()=>normArr(bins.map(b=>b.rel),scale,normMaxes?.rel),[bins,scale,normMaxes]);
   const colV=useMemo(()=>bins.map(b=>b.vader),[bins]);
   const volV=useMemo(()=>normArr(bins.map(b=>b.arousal),scale,normMaxes?.arousal),[bins,scale,normMaxes]);
-  useEffect(()=>{setPinned(null)},[bins]);
 
   useEffect(()=>{
     const el=cRef.current;if(!el)return;const S=stRef.current;
@@ -165,7 +177,7 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
       const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
       S.sc=sc;S.cam=cam;S.ren=ren;S.boxes=boxes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();
       const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);setHov(h.length?h[0].object.userData.idx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
-      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);if(h.length){const idx=h[0].object.userData.idx;setPinned(prev=>prev===idx?null:idx)}else setPinned(null)};
+      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(pinnedIdx===idx?null:idx)}else onPin(null)};
       ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
       const tick=()=>{if(dead)return;frameRef.current=requestAnimationFrame(tick);cam.position.lerp(S.tPos,.06);cam.up.lerp(S.tUp,.06);cam.lookAt(0,0,0);cam.updateProjectionMatrix();ren.render(sc,cam)};tick();
       const onR=()=>{const w=el.clientWidth,h=el.clientHeight;if(w<10||h<10)return;const a=w/h;cam.left=-FRU*a;cam.right=FRU*a;cam.top=FRU;cam.bottom=-FRU;cam.updateProjectionMatrix();ren.setSize(w,h)};
@@ -174,6 +186,14 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
     else{const ro=new ResizeObserver(en=>{const{width:w,height:h}=en[0].contentRect;if(w>10&&h>10){ro.disconnect();build(Math.round(w),Math.round(h))}});ro.observe(el);return()=>{dead=true;ro.disconnect();cleanup(el,S,frameRef)}}
     return()=>{dead=true;cleanup(el,S,frameRef)};
   },[gs,fixedWidth,fixedHeight]);
+
+  // Click handler reads pinnedIdx via ref to avoid stale closure
+  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
+  useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement)return;
+    const onClick=e=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((e.clientX-r.left)/r.width)*2-1;S.mouse.y=-((e.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.boxes);if(h.length){const idx=h[0].object.userData.idx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+    if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick);
+    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick;
+  },[onPin]);
 
   useEffect(()=>{const S=stRef.current;if(!S.boxes||S.boxes.length!==bins.length)return;
     const vm=VOL_MUL[gs]||5;
@@ -184,31 +204,24 @@ function VellumGrid({bins,scale,showSize,showColor,showVol,gridSize:gs,normMaxes
       if(b.dimmed){mesh.material.opacity=DIM_OP;mesh.material.color.set(0x222222)}
       else if(showColor){const v=colV[i]/(normMaxes?.vader||.01);if(v>.05)mesh.material.color.setHSL(.38,.65,.3+Math.min(v,1)*.35);else if(v<-.05)mesh.material.color.setHSL(0,.65,.3+Math.min(Math.abs(v),1)*.35);else mesh.material.color.set(0x444444);mesh.material.opacity=showSize?.15+sizeV[i]*.8:.85}
       else{mesh.material.color.set(0x4ecdc4);mesh.material.opacity=showSize?.15+sizeV[i]*.8:.85}
-      if((hov===i||pinned===i)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinned===i?.45:.35}else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})},
-  [sizeV,colV,volV,showSize,showColor,showVol,hov,pinned,bins,gs,normMaxes]);
+      if((hov===i||pinnedIdx===i)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===i?.45:.35}else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})},
+  [sizeV,colV,volV,showSize,showColor,showVol,hov,pinnedIdx,bins,gs,normMaxes]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cam)return;const t=showVol?camIso():camFlat();S.tPos.copy(t.pos);S.tUp.copy(t.up)},[showVol]);
 
-  const ai=pinned!==null?pinned:hov;const ab=ai!==null?bins[ai]:null;const ip=pinned!==null&&ab;const st=ab&&!ab.empty&&!ab.dimmed;
+  const ai=pinnedIdx!==null?pinnedIdx:hov;
   return(<div style={{position:"relative",width:"100%",height:"100%"}}>{label&&<div style={{position:"absolute",top:8,right:10,fontSize:11,color:"#45b7d1",fontFamily:"monospace",zIndex:2,pointerEvents:"none"}}>{label}</div>}
     <div ref={cRef} style={{width:"100%",height:"100%",minHeight:200,borderRadius:6,overflow:"hidden",border:"1px solid #2a2a2a"}}/>
-    {st&&(<div onClick={e=>{if(ip){e.stopPropagation();setPinned(null)}}} style={{position:"absolute",top:8,left:8,padding:"8px 12px",background:ip?"#111111ee":"#111111aa",border:`1px solid ${ip?"#4ecdc4":"#333"}`,borderRadius:6,fontFamily:"monospace",fontSize:10,pointerEvents:ip?"auto":"none",maxWidth:ip?300:220,maxHeight:ip?300:120,overflowY:ip?"auto":"hidden",zIndex:3,cursor:ip?"pointer":"default",backdropFilter:"blur(2px)"}}>
-      <div style={{color:"#4ecdc4",fontSize:12,marginBottom:3}}>[{Math.floor(ai/gs)+1},{(ai%gs)+1}] <span style={{color:"#555",fontSize:9}}>{((ai/(gs*gs))*100).toFixed(1)}% · {ab.w}w</span>{ip&&<span style={{color:"#555",fontSize:9}}> · dismiss</span>}</div>
-      <div style={{color:"#888"}}>{nm==="words"?"Rel":"Ng"}: <span style={{color:showSize?"#4ecdc4":"#888"}}>{ab.rel.toFixed(2)}</span></div>
-      <div style={{color:"#888"}}>V: <span style={{color:showColor?(ab.vader>.05?"#82e0aa":ab.vader<-.05?"#ff6b6b":"#666"):"#888"}}>{ab.vader>0?"+":""}{ab.vader.toFixed(3)}</span></div>
-      <div style={{color:"#888"}}>A: <span style={{color:showVol?(ab.arousal>0?"#f7dc6f":ab.arousal<0?"#45b7d1":"#666"):"#888"}}>{ab.arousal>0?"+":""}{ab.arousal.toFixed(3)}</span></div>
-      {ip&&ab.fullText&&(<div style={{marginTop:5,borderTop:"1px solid #2a2a2a",paddingTop:4,fontSize:10,lineHeight:1.6}}>{Array.isArray(ab.fullText)&&typeof ab.fullText[0]==="object"?ab.fullText.map((t,j)=>{const h=topNSet.has(t.lemma);return(<span key={j}>{j>0?" ":""}<span style={{color:t.stop?"#444":h?"#4ecdc4":"#888",fontWeight:h?"bold":"normal"}}>{t.surface}</span></span>)}):<span style={{color:"#888"}}>{String(ab.fullText)}</span>}</div>)}
-    </div>)}
+    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} showSize={showSize} showColor={showColor} showVol={showVol} ngMode={ngMode} onDismiss={()=>onPin(null)}/>
     <div style={{position:"absolute",bottom:6,left:8,fontSize:9,color:"#333",fontFamily:"monospace"}}>{gs}²</div>
   </div>)}
 
 // ── EMOTIONS ──
-function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidth,fixedHeight,enabledSlots,topNWords}){
+function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidth,fixedHeight,enabledSlots,topNWords,pinnedIdx,onPin}){
   const cRef=useRef(),stRef=useRef({}),frameRef=useRef();
-  const[hov,setHov]=useState(null);const[pinned,setPinned]=useState(null);
+  const[hov,setHov]=useState(null);
   const svRef=useRef(showVol);svRef.current=showVol;
   const topNSet=useMemo(()=>new Set((topNWords||[]).map(([w])=>w)),[topNWords]);
-  useEffect(()=>{setPinned(null)},[bins]);
   const relV=useMemo(()=>normArr(bins.map(b=>b.rel),scale,normMaxes?.rel),[bins,scale,normMaxes]);
 
   useEffect(()=>{
@@ -223,8 +236,8 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
       for(let ci=0;ci<gs*gs;ci++){const cr=Math.floor(ci/gs),cc=ci%gs;
         const cx=cc*c-HALF+c/2,cz=cr*c-HALF+c/2;
         const subs=[];
-        EMO_LAYOUT.forEach(({r,col,emo},si)=>{
-          const ox=((EMO_LAYOUT[si].c)-1)*subSp,oz=(EMO_LAYOUT[si].r-1)*subSp;
+        EMO_LAYOUT.forEach(({r,c:col,emo},si)=>{
+          const ox=(col-1)*subSp,oz=(r-1)*subSp;
           const baseColor=emo?new THREE.Color(EC[emo]):new THREE.Color(0xffffff);
           const mat=new THREE.MeshPhongMaterial({color:0x222222,transparent:true,opacity:.9,shininess:40});
           const mesh=new THREE.Mesh(geo,mat);
@@ -235,8 +248,7 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
       const allMeshes=cellMeshes.flat().map(s=>s.mesh);
       S.sc=sc;S.cam=cam;S.ren=ren;S.cellMeshes=cellMeshes;S.ray=ray;S.mouse=mouse;S.tPos=cam.position.clone();S.tUp=cam.up.clone();S.allMeshes=allMeshes;
       const onMv=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);setHov(h.length?h[0].object.userData.cellIdx:null);ren.domElement.style.cursor=h.length?"crosshair":"default"};
-      const onClick=e=>{const r=ren.domElement.getBoundingClientRect();mouse.x=((e.clientX-r.left)/r.width)*2-1;mouse.y=-((e.clientY-r.top)/r.height)*2+1;ray.setFromCamera(mouse,cam);const h=ray.intersectObjects(allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;setPinned(prev=>prev===idx?null:idx)}else setPinned(null)};
-      ren.domElement.addEventListener("mousemove",onMv);ren.domElement.addEventListener("click",onClick);S._onMv=onMv;S._onClick=onClick;
+      ren.domElement.addEventListener("mousemove",onMv);S._onMv=onMv;
       const tick=()=>{if(dead)return;frameRef.current=requestAnimationFrame(tick);cam.position.lerp(S.tPos,.06);cam.up.lerp(S.tUp,.06);cam.lookAt(0,0,0);cam.updateProjectionMatrix();ren.render(sc,cam)};tick();
       const onR=()=>{const w=el.clientWidth,h=el.clientHeight;if(w<10||h<10)return;const a=w/h;cam.left=-FRU*a;cam.right=FRU*a;cam.top=FRU;cam.bottom=-FRU;cam.updateProjectionMatrix();ren.setSize(w,h)};
       window.addEventListener("resize",onR);S._onR=onR};
@@ -245,8 +257,16 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
     return()=>{dead=true;cleanup(el,S,frameRef)};
   },[gs,fixedWidth,fixedHeight]);
 
+  // Click handler via ref for fresh pinnedIdx
+  const piRef=useRef(pinnedIdx);piRef.current=pinnedIdx;
+  useEffect(()=>{const S=stRef.current;if(!S.ren?.domElement)return;
+    const onClick=e=>{const r=S.ren.domElement.getBoundingClientRect();S.mouse.x=((e.clientX-r.left)/r.width)*2-1;S.mouse.y=-((e.clientY-r.top)/r.height)*2+1;S.ray.setFromCamera(S.mouse,S.cam);const h=S.ray.intersectObjects(S.allMeshes);if(h.length){const idx=h[0].object.userData.cellIdx;onPin(piRef.current===idx?null:idx)}else onPin(null)};
+    if(S._onClick)S.ren.domElement.removeEventListener("click",S._onClick);
+    S.ren.domElement.addEventListener("click",onClick);S._onClick=onClick;
+  },[onPin]);
+
   useEffect(()=>{const S=stRef.current;if(!S.cellMeshes)return;
-    const aroMax=normMaxes?.arousal||1,vm=EMO_VOL_MUL[gs]||1.8;
+    const aroMax=normMaxes?.arousal||1;
     S.cellMeshes.forEach((subs,ci)=>{const b=bins[ci];
       subs.forEach(({slot,emo,mesh})=>{
         if(b.empty){mesh.visible=false;return}
@@ -258,27 +278,22 @@ function VellumEmoGrid({bins,scale,showVol,gridSize:gs,normMaxes,label,fixedWidt
         let brightness,aro;
         if(isCenter){brightness=relV[ci];aro=b.arousal/aroMax}
         else{const ed=b.emo[emo];brightness=ed?ed.prop:0;aro=ed?(ed.aro/aroMax):0}
-        const vb=brightness>0?0.08+Math.pow(brightness,0.4)*0.92:0;
+        const vb=isCenter?brightness:emoBright(brightness);
         const bc=mesh.userData.baseColor;
         mesh.material.color.setRGB(bc.r*vb*.85+.05,bc.g*vb*.85+.05,bc.b*vb*.85+.05);
         mesh.material.opacity=.3+vb*.65;
-        if(showVol){const h=Math.max(.08,Math.abs(aro)*vm);mesh.scale.y=h;mesh.position.y=aro>=0?h/2:-h/2}
+        if(showVol){const h=Math.min(EMO_VOL_CAP,Math.max(.06,Math.abs(aro)*3));mesh.scale.y=h;mesh.position.y=aro>=0?h/2:-h/2}
         else{mesh.scale.y=.06;mesh.position.y=.03}
-        if((hov===ci||pinned===ci)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinned===ci?.3:.2}
+        if((hov===ci||pinnedIdx===ci)&&!b.dimmed){mesh.material.emissive.set(0xffffff);mesh.material.emissiveIntensity=pinnedIdx===ci?.3:.2}
         else{mesh.material.emissive.set(0);mesh.material.emissiveIntensity=0}})})},
-  [bins,relV,showVol,hov,pinned,enabledSlots,gs,normMaxes]);
+  [bins,relV,showVol,hov,pinnedIdx,enabledSlots,gs,normMaxes]);
 
   useEffect(()=>{const S=stRef.current;if(!S.cam)return;const t=showVol?camIso():camFlat();S.tPos.copy(t.pos);S.tUp.copy(t.up)},[showVol]);
 
-  const ai=pinned!==null?pinned:hov;const ab=ai!==null?bins[ai]:null;const ip=pinned!==null&&ab;const st=ab&&!ab.empty&&!ab.dimmed;
+  const ai=pinnedIdx!==null?pinnedIdx:hov;
   return(<div style={{position:"relative",width:"100%",height:"100%"}}>{label&&<div style={{position:"absolute",top:8,right:10,fontSize:11,color:"#45b7d1",fontFamily:"monospace",zIndex:2,pointerEvents:"none"}}>{label}</div>}
     <div ref={cRef} style={{width:"100%",height:"100%",minHeight:200,borderRadius:6,overflow:"hidden",border:"1px solid #2a2a2a"}}/>
-    {st&&(<div onClick={e=>{if(ip){e.stopPropagation();setPinned(null)}}} style={{position:"absolute",top:8,left:8,padding:"8px 12px",background:ip?"#111111ee":"#111111aa",border:`1px solid ${ip?"#4ecdc4":"#333"}`,borderRadius:6,fontFamily:"monospace",fontSize:10,pointerEvents:ip?"auto":"none",maxWidth:ip?300:220,maxHeight:ip?300:120,overflowY:ip?"auto":"hidden",zIndex:3,cursor:ip?"pointer":"default",backdropFilter:"blur(2px)"}}>
-      <div style={{color:"#4ecdc4",fontSize:12,marginBottom:3}}>[{Math.floor(ai/gs)+1},{(ai%gs)+1}] <span style={{color:"#555",fontSize:9}}>{((ai/(gs*gs))*100).toFixed(1)}% · {ab.w}w</span>{ip&&<span style={{color:"#555",fontSize:9}}> · dismiss</span>}</div>
-      <div style={{color:"#888"}}>Rel: <span style={{color:"#ccc"}}>{ab.rel.toFixed(2)}</span> · A: <span style={{color:ab.arousal>0?"#f7dc6f":"#45b7d1"}}>{ab.arousal>0?"+":""}{ab.arousal.toFixed(3)}</span></div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>{EMOTIONS.filter(e=>enabledSlots.has(e)&&ab.emo[e]?.prop>0).map(e=>(<span key={e} style={{fontSize:9,color:EC[e]}}>{e.slice(0,3)}:{(ab.emo[e].prop*100).toFixed(0)}%</span>))}</div>
-      {ip&&ab.fullText&&(<div style={{marginTop:5,borderTop:"1px solid #2a2a2a",paddingTop:4,fontSize:10,lineHeight:1.6}}>{Array.isArray(ab.fullText)&&typeof ab.fullText[0]==="object"?ab.fullText.map((t,j)=>{const h=topNSet.has(t.lemma);return(<span key={j}>{j>0?" ":""}<span style={{color:t.stop?"#444":h?"#4ecdc4":"#888",fontWeight:h?"bold":"normal"}}>{t.surface}</span></span>)}):<span style={{color:"#888"}}>{String(ab.fullText)}</span>}</div>)}
-    </div>)}
+    <VellumTooltip ai={ai} bins={bins} gs={gs} pinned={pinnedIdx!==null} topNSet={topNSet} showSize={false} showColor={false} showVol={showVol} ngMode="words" onDismiss={()=>onPin(null)}/>
     <div style={{position:"absolute",bottom:6,left:8,fontSize:9,color:"#333",fontFamily:"monospace"}}>{gs}² emotions</div>
   </div>)}
 
@@ -326,6 +341,9 @@ function Texturas(){
   const[loading,setLoading]=useState(false);const[msg,setMsg]=useState("");const[engSt,setEngSt]=useState(0);const[showParams,setShowParams]=useState(false);
   const[vellumPage,setVellumPage]=useState("channels");
   const[enabledSlots,setEnabledSlots]=useState(new Set([...EMOTIONS,"center"]));
+  // Pin state lifted — persists across page toggles. Map of docId -> cellIdx
+  const[pinnedCells,setPinnedCells]=useState({});
+  const pinFor=useCallback((docId)=>(idx)=>setPinnedCells(prev=>({...prev,[docId]:idx})),[]);
 
   const eng=useRef({vec:new VectorEngine(),pos:new POSTagger(),lem:new Lemmatizer(),syn:new SynsetEngine(),sent:new SentimentScorer()});
   useEffect(()=>{if(!ASSET_BASE_URL)return;let c=false;
@@ -341,11 +359,11 @@ function Texturas(){
       const sw=await loadAsset("l-s","lexicons/sentiwordnet.json",false,setMsg);if(sw&&!c)e.sent.lSwn(sw);
       if(!c){setMsg("");setEngSt(s=>s+1)}})();return()=>{c=true}},[]);
 
-  // Auto-rerun when assets arrive if analysis was already performed
+  // Auto-rerun when assets arrive
   const hasRun=useRef(false);
   useEffect(()=>{if(Object.keys(perDocResults).length>0)hasRun.current=true},[perDocResults]);
-  useEffect(()=>{if(engSt>0&&hasRun.current&&validDocs.length>0){
-    const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,flow)});
+  useEffect(()=>{if(engSt>0&&hasRun.current&&docs.filter(d=>d.text.trim()).length>0){
+    const pdr={};docs.filter(d=>d.text.trim()).forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,flow)});
     setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words")}},[engSt]);
 
   const addDoc=()=>{const id=`d${Date.now()}`;setDocs(d=>[...d,{id,label:`Document ${d.length+1}`,text:""}]);setActiveInputDoc(id)};
@@ -359,7 +377,7 @@ function Texturas(){
 
   const runAnalysis=useCallback(()=>{if(!validDocs.length)return;setLoading(true);setMsg("Analyzing...");
     setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,flow)});
-      setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words");setSelectedViewDocs(new Set([validDocs[0].id]));setLoading(false);setMsg("");setTab("vellum")},50)},[docs,topN,wnDepth,decay,flow]);
+      setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words");setSelectedViewDocs(new Set([validDocs[0].id]));setPinnedCells({});setLoading(false);setMsg("");setTab("vellum")},50)},[docs,topN,wnDepth,decay,flow]);
 
   const handleDocClick=(id,e)=>{if(e.ctrlKey||e.metaKey){setSelectedViewDocs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);if(n.size===0)n.add(id);return n})}else setSelectedViewDocs(new Set([id]))};
   const rerunFlow=v=>{setFlow(v);setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,v)});setPerDocResults(pdr);setFilterWords(new Set())},50)};
@@ -442,13 +460,13 @@ function Texturas(){
             {isPatchwork?(<div ref={patchContainerRef} style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:6}}>
               {selectedArr.map(id=>{const vd=allVData[id];const doc=docs.find(d=>d.id===id);if(!vd)return null;
                 return(<div key={`pw-${id}-${vellumPage}`} style={{height:gridH,minWidth:0}}>
-                  {vellumPage==="channels"?<VellumGrid key={`vc-${id}-${gridSize}-${patchCellW}`} bins={vd.bins} scale={scale} showSize={showSize} showColor={showColor} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={doc?.label} ngMode={ngMode} fixedWidth={patchCellW||undefined} fixedHeight={gridH} topNWords={perDocResults[id]?.topWords}/>
-                  :<VellumEmoGrid key={`ve-${id}-${gridSize}-${patchCellW}`} bins={vd.bins} scale={scale} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={doc?.label} fixedWidth={patchCellW||undefined} fixedHeight={gridH} enabledSlots={enabledSlots} topNWords={perDocResults[id]?.topWords}/>}
+                  {vellumPage==="channels"?<VellumGrid key={`vc-${id}-${gridSize}-${patchCellW}`} bins={vd.bins} scale={scale} showSize={showSize} showColor={showColor} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={doc?.label} ngMode={ngMode} fixedWidth={patchCellW||undefined} fixedHeight={gridH} topNWords={perDocResults[id]?.topWords} pinnedIdx={pinnedCells[id]??null} onPin={pinFor(id)}/>
+                  :<VellumEmoGrid key={`ve-${id}-${gridSize}-${patchCellW}`} bins={vd.bins} scale={scale} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={doc?.label} fixedWidth={patchCellW||undefined} fixedHeight={gridH} enabledSlots={enabledSlots} topNWords={perDocResults[id]?.topWords} pinnedIdx={pinnedCells[id]??null} onPin={pinFor(id)}/>}
                 </div>)})}
             </div>):(<div style={{height:540}}>
               {allVData[selectedArr[0]]&&(vellumPage==="channels"
-                ?<VellumGrid key={`vc-${selectedArr[0]}-${gridSize}`} bins={allVData[selectedArr[0]].bins} scale={scale} showSize={showSize} showColor={showColor} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={analyzedIds.length>1?docs.find(d=>d.id===selectedArr[0])?.label:null} ngMode={ngMode} topNWords={perDocResults[selectedArr[0]]?.topWords}/>
-                :<VellumEmoGrid key={`ve-${selectedArr[0]}-${gridSize}`} bins={allVData[selectedArr[0]].bins} scale={scale} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={analyzedIds.length>1?docs.find(d=>d.id===selectedArr[0])?.label:null} enabledSlots={enabledSlots} topNWords={perDocResults[selectedArr[0]]?.topWords}/>)}
+                ?<VellumGrid key={`vc-${selectedArr[0]}-${gridSize}`} bins={allVData[selectedArr[0]].bins} scale={scale} showSize={showSize} showColor={showColor} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={analyzedIds.length>1?docs.find(d=>d.id===selectedArr[0])?.label:null} ngMode={ngMode} topNWords={perDocResults[selectedArr[0]]?.topWords} pinnedIdx={pinnedCells[selectedArr[0]]??null} onPin={pinFor(selectedArr[0])}/>
+                :<VellumEmoGrid key={`ve-${selectedArr[0]}-${gridSize}`} bins={allVData[selectedArr[0]].bins} scale={scale} showVol={showVol} gridSize={gridSize} normMaxes={normMaxes} label={analyzedIds.length>1?docs.find(d=>d.id===selectedArr[0])?.label:null} enabledSlots={enabledSlots} topNWords={perDocResults[selectedArr[0]]?.topWords} pinnedIdx={pinnedCells[selectedArr[0]]??null} onPin={pinFor(selectedArr[0])}/>)}
             </div>)}
           </div>
           <div style={{width:160,flexShrink:0,maxHeight:isPatchwork?gridH*rows+6*(rows-1):540,display:"flex",flexDirection:"column"}}>
