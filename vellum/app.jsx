@@ -398,35 +398,40 @@ function Texturas(){
   const rerunFlow=v=>{setFlow(v);setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,topN,wnDepth,decay,v)});setPerDocResults(pdr);setFilterWords(new Set());setWeaveData({})},50)};
   const rerunTopN=useCallback(n=>{setTopN(n);if(!validDocs.length)return;setTimeout(()=>{const pdr={};validDocs.forEach(d=>{pdr[d.id]=analyzeForVellum(d.text,eng.current,n,wnDepth,decay,flow)});setPerDocResults(pdr);setFilterWords(new Set());setNgMode("words");setWeaveData({})},50)},[docs,wnDepth,decay,flow]);
   const toggleWeaveSeed=useCallback(w=>{setWeaveSeeds(prev=>{const n=new Set(prev);if(n.has(w))n.delete(w);else n.add(w);return n})},[]);
-  useEffect(()=>{if(!weaveSeeds.size||!selectedArr.length){setWeaveData({});return}const e=eng.current,seeds=[...weaveSeeds];
+  useEffect(()=>{if(!weaveSeeds.size||!selectedArr.length){setWeaveData({});return}
+    // Defer to let UI breathe
+    const tid=setTimeout(()=>{
+    const e=eng.current,seeds=[...weaveSeeds];
     // Pass 1: expand per-doc to find all corpus-present terms
     const perDocGroups={};
     selectedArr.forEach(id=>{const r=perDocResults[id];if(!r)return;perDocGroups[id]=expandSeeds(seeds,e.syn,e.pos,r.fMap,wnDepth)});
-    // Build union term set from all docs
-    const unionSeeds=new Set();const unionExps={};
-    Object.values(perDocGroups).forEach(groups=>{groups.forEach(g=>{unionSeeds.add(g.seed);g.exps.forEach(ex=>{const prev=unionExps[g.seed+"::"+ex.word];if(!prev||ex.dist<prev.dist)unionExps[g.seed+"::"+ex.word]=ex})})});
-    const unionTermWords=new Set();
-    [...unionSeeds].forEach(seed=>{unionTermWords.add(seed);Object.entries(unionExps).forEach(([k,ex])=>{if(k.startsWith(seed+"::"))unionTermWords.add(ex.word)})});
-    // Pass 2: compute each doc's signals using union term set
+    // Build union term set
+    const unionSeedSet=new Set();const unionExps={};
+    Object.values(perDocGroups).forEach(groups=>{groups.forEach(g=>{unionSeedSet.add(g.seed);g.exps.forEach(ex=>{const k=g.seed+"::"+ex.word;const prev=unionExps[k];if(!prev||ex.dist<prev.dist)unionExps[k]=ex})})});
+    const allTermWords=new Set();
+    [...unionSeedSet].forEach(seed=>{allTermWords.add(seed);Object.entries(unionExps).forEach(([k,ex])=>{if(k.startsWith(seed+"::"))allTermWords.add(ex.word)})});
+    const tW=[...allTermWords];
+    if(!tW.length){setWeaveData({});return}
+    // Compute synset proximity ONCE (not per doc)
+    const proxCache={},mH=wnDepth*2;
+    tW.forEach(a=>{proxCache[a]={};tW.forEach(b=>{if(a===b){proxCache[a][b]=1;return}const d=synDist(a,b,e.syn,e.pos,mH);proxCache[a][b]=d>=0?1/(1+d):0})});
+    // Compute pairAct cache per doc (one run per term per doc)
     const wd={};
     selectedArr.forEach(id=>{const r=perDocResults[id];if(!r)return;
       const docCorpus=new Set(Object.keys(r.fMap));
-      // Filter union terms to those present in this doc's corpus
-      const tW=[...unionTermWords];const tS=new Set(tW.filter(w=>docCorpus.has(w)));
-      // Co-occurrence using union terms
+      const tS=new Set(tW.filter(w=>docCorpus.has(w)));
+      // Co-occurrence
       const cooc={};tW.forEach(a=>{cooc[a]={};tW.forEach(b=>{cooc[a][b]=0})});
       for(let i=0;i<r.filtLem.length;i++){if(!tS.has(r.filtLem[i]))continue;for(let j=Math.max(0,i-5);j<=Math.min(r.filtLem.length-1,i+5);j++){if(i!==j&&tS.has(r.filtLem[j]))cooc[r.filtLem[i]][r.filtLem[j]]++}}
-      // Pairwise activation
-      const ac={};tW.forEach(w=>{if(docCorpus.has(w))ac[w]=pairAct(w,r.fMap,e.syn,e.pos,wnDepth,decay,flow);else ac[w]={}});
+      // Pairwise activation — one traversal per present term
+      const ac={};tW.forEach(w=>{ac[w]=docCorpus.has(w)?pairAct(w,r.fMap,e.syn,e.pos,wnDepth,decay,flow):{}});
       const activ={};tW.forEach(a=>{activ[a]={};tW.forEach(b=>{activ[a][b]=Math.max(ac[a]?.[b]||0,ac[b]?.[a]||0)})});
-      // Synset proximity
-      const prox={},mH=wnDepth*2;tW.forEach(a=>{prox[a]={};tW.forEach(b=>{const d=synDist(a,b,e.syn,e.pos,mH);prox[a][b]=d>=0?1/(1+d):0})});
       let mxC=0,mxA=0;tW.forEach(a=>tW.forEach(b=>{if(a!==b){mxC=Math.max(mxC,cooc[a][b]);mxA=Math.max(mxA,activ[a][b])}}));
-      // Build groups structure for this doc using union seeds
-      const groups=perDocGroups[id]||[];
-      const terms=[];[...unionSeeds].forEach(seed=>{terms.push({word:seed,parent:null,rel:"seed",dist:0});Object.entries(unionExps).forEach(([k,ex])=>{if(k.startsWith(seed+"::"))terms.push({word:ex.word,parent:seed,rel:ex.rel,dist:ex.dist})})});
-      wd[id]={terms,groups,cooc,activ,prox,mxC:mxC||1,mxA:mxA||1}});
-    setWeaveData(wd)},[weaveSeeds,selectedArr.join(","),perDocResults,wnDepth,decay,flow]);
+      // Build terms structure using union
+      const terms=[];[...unionSeedSet].forEach(seed=>{terms.push({word:seed,parent:null,rel:"seed",dist:0});Object.entries(unionExps).forEach(([k,ex])=>{if(k.startsWith(seed+"::"))terms.push({word:ex.word,parent:seed,rel:ex.rel,dist:ex.dist})})});
+      wd[id]={terms,groups:perDocGroups[id]||[],cooc,activ,prox:proxCache,mxC:mxC||1,mxA:mxA||1}});
+    setWeaveData(wd)},50);
+    return()=>clearTimeout(tid)},[weaveSeeds,selectedArr.join(","),perDocResults,wnDepth,decay,flow]);
 
   const allVData=useMemo(()=>{const out={};selectedArr.forEach(id=>{const r=perDocResults[id];if(!r)return;const ngFM=ngMode==="bigrams"?r.ng2Map:ngMode==="trigrams"?r.ng3Map:null;out[id]=vellumBins(r.enriched,gridSize,filterWords,ngMode,ngFM)});return out},[perDocResults,selectedArr.join(","),gridSize,filterWords,ngMode]);
   const normMaxes=useMemo(()=>{let mR=0,mV=0,mA=0;Object.values(allVData).forEach(vd=>{vd.bins.forEach(b=>{if(!b.empty&&!b.dimmed){mR=Math.max(mR,Math.abs(b.rel));mV=Math.max(mV,Math.abs(b.vader));mA=Math.max(mA,Math.abs(b.arousal))}})});return{rel:mR||1,vader:mV||.01,arousal:mA||1}},[allVData]);
