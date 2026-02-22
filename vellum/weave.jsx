@@ -268,7 +268,7 @@ function WeaveStandalone(){
     </div>
 
     {/* Doc selector */}
-    {tab==="weave"&&analyzedIds.length>0&&(<div style={{display:"flex",gap:4,padding:"6px 20px",borderBottom:"1px solid #2a2a2a",background:"#151515"}}>
+    {tab==="weave"&&analyzedIds.length>0&&(<div style={{display:"flex",gap:4,padding:"8px 20px",borderBottom:"1px solid #2a2a2a",background:"#151515"}}>
       {validDocs.filter(d=>weavePerDoc[d.id]).map(d=> <button key={d.id} onClick={()=>{setWActiveDoc(d.id);setWHighlight(null)}} style={{padding:"4px 12px",borderRadius:3,border:"1px solid "+(wActiveDoc===d.id?"#45b7d1":"#333"),background:wActiveDoc===d.id?"#45b7d1":"#1a1a1a",color:wActiveDoc===d.id?"#111":"#888",fontSize:11,fontFamily:"monospace",cursor:"pointer"}}>{d.label} <span style={{opacity:.6,fontSize:9}}>({d.text.trim().split(/\s+/).length.toLocaleString()})</span></button>)}</div>)}
 
 
