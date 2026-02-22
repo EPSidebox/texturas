@@ -110,10 +110,10 @@ function WeaveTooltip({token,x,y}){
 function WeaveMinimap({enriched,layers,enabledSlots,showArousal,maxFreq,maxRel,scrollFrac,viewFrac,onSeek,height}){
   const cvRef=useRef();
   const flatWords=useMemo(()=>{const out=[];enriched.forEach((para,pi)=>{para.forEach(t=>{if(t.type==="word")out.push(t)});out.push(null)});return out},[enriched]);
-  useEffect(()=>{const cv=cvRef.current;if(!cv)return;const ctx=cv.getContext("2d");const w=60,h=height||cv.parentElement?.clientHeight||400;
-    cv.width=w;cv.height=h;ctx.fillStyle="#0d0d0d";ctx.fillRect(0,0,w,h);
+  useEffect(()=>{const cv=cvRef.current;if(!cv)return;const ctx=cv.getContext("2d");const h=height||cv.parentElement?.clientHeight||400;
+    cv.width=80;cv.height=h;ctx.fillStyle="#0d0d0d";ctx.fillRect(0,0,80,h);
     const total=flatWords.length;if(!total)return;
-    const rowH=Math.max(1,Math.min(3,h/Math.ceil(total/12)));const cols=12,cw=Math.floor(w/cols);
+    const rowH=Math.max(1,Math.min(3,h/Math.ceil(total/16)));const cols=16,cw=Math.floor(80/cols);
     let row=0,col=0;
     flatWords.forEach(t=>{if(!t){row++;col=0;return}
       const y=row*rowH,x=col*cw;if(y>h)return;
@@ -130,8 +130,8 @@ function WeaveMinimap({enriched,layers,enabledSlots,showArousal,maxFreq,maxRel,s
       col++;if(col>=cols){col=0;row++}});
     const totalRows=row+1,mapH=totalRows*rowH;
     const vpY=scrollFrac*Math.min(mapH,h),vpH=Math.max(8,viewFrac*Math.min(mapH,h));
-    ctx.fillStyle="rgba(78,205,196,0.15)";ctx.fillRect(0,vpY,w,vpH);
-    ctx.strokeStyle="#4ecdc466";ctx.lineWidth=1;ctx.strokeRect(0.5,vpY+0.5,w-1,vpH-1);
+    ctx.fillStyle="rgba(78,205,196,0.15)";ctx.fillRect(0,vpY,80,vpH);
+    ctx.strokeStyle="#4ecdc466";ctx.lineWidth=1;ctx.strokeRect(0.5,vpY+0.5,79,vpH-1);
   },[flatWords,layers,enabledSlots,showArousal,maxFreq,maxRel,scrollFrac,viewFrac,height]);
   const handleClick=useCallback(e=>{const cv=cvRef.current;if(!cv)return;const r=cv.getBoundingClientRect();const frac=(e.clientY-r.top)/r.height;onSeek(Math.max(0,Math.min(1,frac)))},[onSeek]);
   const dragRef=useRef(false);
@@ -139,7 +139,7 @@ function WeaveMinimap({enriched,layers,enabledSlots,showArousal,maxFreq,maxRel,s
   const onMove=useCallback(e=>{if(dragRef.current)handleClick(e)},[handleClick]);
   const onUp=useCallback(()=>{dragRef.current=false},[]);
   useEffect(()=>{window.addEventListener("mouseup",onUp);return ()=>window.removeEventListener("mouseup",onUp)},[onUp]);
-  return <canvas ref={cvRef} style={{width:60,flexShrink:0,cursor:"pointer",borderLeft:"1px solid #2a2a2a",borderRight:"1px solid #2a2a2a"}} onMouseDown={onDown} onMouseMove={onMove}/>}
+  return <canvas ref={cvRef} style={{width:80,flexShrink:0,cursor:"pointer",borderLeft:"1px solid #2a2a2a",borderRight:"1px solid #2a2a2a"}} onMouseDown={onDown} onMouseMove={onMove}/>}
 
 function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onClick,enabledSlots,showArousal,scrollRef,onScroll,gridSize}){
   if(!enriched?.length) return <div style={{color:"#555",textAlign:"center",marginTop:60,fontSize:13}}>Run analysis to see annotated text.</div>;
@@ -174,7 +174,7 @@ function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onCl
 function WeaveWordPanel({result,topN,highlightLemma,onClickWord,ngMode,setNgMode}){
   const{freqPairs,relevanceMap,maxFreq,maxRel,ng2,ng3}=result;
   const isUni=ngMode==="1";const words=isUni?freqPairs.slice(0,topN):ngMode==="2"?ng2.slice(0,topN):ng3.slice(0,topN);const maxV=words[0]?.[1]||1;
-  return <div style={{flex:1,minWidth:0,borderLeft:"1px solid #333",overflowY:"auto",padding:"10px 8px",display:"flex",flexDirection:"column"}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0,height:"100%"}}>
     <div style={{display:"flex",gap:0,marginBottom:6,border:"1px solid #333",borderRadius:3,overflow:"hidden"}}>{[["1","1"],["2","2"],["3","3"]].map(([v,l])=> <button key={v} onClick={()=>setNgMode(v)} style={{flex:1,padding:"4px 0",background:ngMode===v?"#bb8fce":"#1a1a1a",color:ngMode===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:10,fontFamily:"monospace",fontWeight:ngMode===v?"bold":"normal"}}>{l}</button>)}</div>
     <div style={{fontSize:10,color:"#666",marginBottom:6}}>Top {topN} {isUni?"words":ngMode==="2"?"bigrams":"trigrams"}</div>
     <div style={{flex:1,overflowY:"auto"}}>{words.map(([w,c])=>{const rel=isUni?(relevanceMap[w]||0):0,isHL=highlightLemma===w;
@@ -271,35 +271,11 @@ function WeaveStandalone(){
     {tab==="weave"&&analyzedIds.length>0&&(<div style={{display:"flex",gap:4,padding:"6px 20px",borderBottom:"1px solid #2a2a2a",background:"#151515"}}>
       {validDocs.filter(d=>weavePerDoc[d.id]).map(d=> <button key={d.id} onClick={()=>{setWActiveDoc(d.id);setWHighlight(null)}} style={{padding:"4px 12px",borderRadius:3,border:"1px solid "+(wActiveDoc===d.id?"#45b7d1":"#333"),background:wActiveDoc===d.id?"#45b7d1":"#1a1a1a",color:wActiveDoc===d.id?"#111":"#888",fontSize:11,fontFamily:"monospace",cursor:"pointer"}}>{d.label} <span style={{opacity:.6,fontSize:9}}>({d.text.trim().split(/\s+/).length.toLocaleString()})</span></button>)}</div>)}
 
-    {/* Toolbar — matches Vellum spec: tab-specific LEFT, shared RIGHT */}
-    {tab==="weave"&&activeWR&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",borderBottom:"1px solid #2a2a2a",background:"#151515"}}>
-      {LAYER_CFG.map(l=> <button key={l.id} onClick={()=>toggleWLayer(l.id)} title={l.desc} style={{padding:"5px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",cursor:"pointer",background:wLayers[l.id]?l.color+"22":"#1a1a1a",color:wLayers[l.id]?l.color:"#555",border:"1px solid "+(wLayers[l.id]?l.color:"#333"),transition:"all 0.15s"}}>{l.label}</button>)}
-      {wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}
-      <div style={{width:1,height:22,background:"#333"}}/>
-      <div style={{display:"flex",gap:0,border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[10,20,30].map(g=> <button key={g} onClick={()=>setGridSize(g)} style={{padding:"5px 11px",background:gridSize===g?"#bb8fce":"#1a1a1a",color:gridSize===g?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:gridSize===g?"bold":"normal"}}>{g}²</button>)}</div>
-      <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
-        <button onClick={()=>setShowArousal(!showArousal)} style={{padding:"5px 10px",background:showArousal?"#2a2a1a":"#1a1a1a",color:showArousal?"#f7dc6f":"#555",border:"1px solid "+(showArousal?"#f7dc6f44":"#333"),borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>Arousal</button>
-        <div style={{width:1,height:22,background:"#333"}}/>
-        <div style={{display:"flex",gap:0,border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[["bi","Bi"],["up","↑"],["down","↓"]].map(([v,l])=> <button key={v} onClick={()=>rerunFlow(v)} style={{padding:"5px 9px",background:flow===v?"#45b7d1":"#1a1a1a",color:flow===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>{l}</button>)}</div>
-        <div style={{width:1,height:22,background:"#333"}}/>
-        <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>N:</span><input type="range" min={10} max={50} value={topN} onChange={ev=>rerunTopN(+ev.target.value)} style={{width:60}}/><span style={{fontSize:10,color:"#aaa",width:16}}>{topN}</span></div>
-        <div style={{width:1,height:22,background:"#333"}}/>
-        <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>decay:</span><input type="range" min={30} max={80} value={decay*100} onChange={ev=>rerunDecay(+ev.target.value/100)} style={{width:50}}/><span style={{fontSize:10,color:"#aaa",width:24}}>{decay.toFixed(2)}</span></div>
-      </div>
-    </div>}
 
-    {/* Legend */}
-    {tab==="weave"&&activeWR&&<div style={{display:"flex",gap:14,padding:"5px 16px",borderBottom:"1px solid #222",background:"#0f0f0f",fontSize:9,color:"#555",flexWrap:"wrap",alignItems:"center"}}>
-      {wLayers.polarity&&<span><span style={{color:"#82e0aa"}}>■</span>/<span style={{color:"#ff6b6b"}}>■</span> polarity</span>}
-      {wLayers.emotion&&<span><span style={{color:"#f0b27a"}}>—</span> emotion</span>}
-      {showArousal&&<span><span style={{color:"#f7dc6f"}}>━</span> arousal</span>}
-      {wLayers.frequency&&<span><span style={{color:"#bb8fce"}}>○</span> brightness</span>}
-      {wLayers.relevance&&<span><span style={{color:"#4ecdc4",fontWeight:600}}>B</span> weight</span>}
-      {wLayers.community&&<span style={{background:"#4ecdc41a",padding:"0 4px",borderRadius:2}}>community</span>}
-    </div>}
+
 
     {/* Content */}
-    <div style={{flex:1,padding:tab==="weave"?0:"16px 20px",overflowY:tab==="weave"?"hidden":"auto",display:tab==="weave"?"flex":"block"}}>
+    <div style={{flex:1,padding:tab==="weave"?0:"16px 20px",overflowY:"auto"}}>
 
       {/* INPUT TAB */}
       {tab==="input"&&(<div style={{maxWidth:800,margin:"0 auto"}}>
@@ -330,7 +306,30 @@ function WeaveStandalone(){
       </div>)}
 
       {/* WEAVE TAB — content area matches Vellum: flex + gap:10 + alignItems:stretch */}
-      {tab==="weave"&&activeWR&&<div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column"}}>
+      {tab==="weave"&&activeWR&&<div style={{maxWidth:1100,margin:"0 auto",padding:"16px 20px"}}>
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",height:36}}>
+          {LAYER_CFG.map(l=> <button key={l.id} onClick={()=>toggleWLayer(l.id)} title={l.desc} style={{padding:"5px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",cursor:"pointer",background:wLayers[l.id]?l.color+"22":"#1a1a1a",color:wLayers[l.id]?l.color:"#555",border:"1px solid "+(wLayers[l.id]?l.color:"#333"),transition:"all 0.15s"}}>{l.label}</button>)}
+          <div style={{width:40,flexShrink:0,display:"flex",justifyContent:"flex-start"}}>{wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}</div>
+          <div style={{width:1,height:22,background:"#333"}}/>
+          <div style={{display:"flex",gap:0,border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[10,20,30].map(g=> <button key={g} onClick={()=>setGridSize(g)} style={{padding:"5px 11px",background:gridSize===g?"#bb8fce":"#1a1a1a",color:gridSize===g?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:gridSize===g?"bold":"normal"}}>{g}²</button>)}</div>
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={()=>setShowArousal(!showArousal)} style={{padding:"5px 10px",background:showArousal?"#2a2a1a":"#1a1a1a",color:showArousal?"#f7dc6f":"#555",border:"1px solid "+(showArousal?"#f7dc6f44":"#333"),borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>Arousal</button>
+            <div style={{width:1,height:22,background:"#333"}}/>
+            <div style={{display:"flex",gap:0,border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[["bi","Bi"],["up","↑"],["down","↓"]].map(([v,l])=> <button key={v} onClick={()=>rerunFlow(v)} style={{padding:"5px 9px",background:flow===v?"#45b7d1":"#1a1a1a",color:flow===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>{l}</button>)}</div>
+            <div style={{width:1,height:22,background:"#333"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>N:</span><input type="range" min={10} max={50} value={topN} onChange={ev=>rerunTopN(+ev.target.value)} style={{width:60}}/><span style={{fontSize:10,color:"#aaa",width:16}}>{topN}</span></div>
+            <div style={{width:1,height:22,background:"#333"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>decay:</span><input type="range" min={30} max={80} value={decay*100} onChange={ev=>rerunDecay(+ev.target.value/100)} style={{width:50}}/><span style={{fontSize:10,color:"#aaa",width:24}}>{decay.toFixed(2)}</span></div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:14,marginBottom:10,padding:"8px 12px",background:"#0d0d0d",borderRadius:4,border:"1px solid #1a1a1a",fontSize:9,color:"#555",flexWrap:"wrap"}}>
+          {wLayers.polarity&&<span><span style={{color:"#82e0aa"}}>■</span>/<span style={{color:"#ff6b6b"}}>■</span> polarity</span>}
+          {wLayers.emotion&&<span><span style={{color:"#f0b27a"}}>—</span> emotion</span>}
+          {showArousal&&<span><span style={{color:"#f7dc6f"}}>━</span> arousal</span>}
+          {wLayers.frequency&&<span><span style={{color:"#bb8fce"}}>○</span> brightness</span>}
+          {wLayers.relevance&&<span><span style={{color:"#4ecdc4",fontWeight:600}}>B</span> weight</span>}
+          {wLayers.community&&<span style={{background:"#4ecdc41a",padding:"0 4px",borderRadius:2}}>community</span>}
+        </div>
         <div ref={contentRef} style={{display:"flex",gap:10,alignItems:"stretch",height:540,overflow:"hidden"}}>
           <WeaveReader enriched={activeWR.enriched} layers={wLayers} highlightLemma={wHighlight} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} onHover={(t,x,y)=>{setWHovTok(t);setWHovPos({x,y})}} onClick={lem=>setWHighlight(prev=>prev===lem?null:lem)} enabledSlots={enabledSlots} showArousal={showArousal} scrollRef={readerRef} onScroll={handleReaderScroll} gridSize={gridSize}/>
           <WeaveMinimap enriched={activeWR.enriched} layers={wLayers} enabledSlots={enabledSlots} showArousal={showArousal} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} scrollFrac={scrollFrac} viewFrac={viewFrac} onSeek={handleMinimapSeek} height={contentH}/>
