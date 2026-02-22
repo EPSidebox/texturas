@@ -322,14 +322,6 @@ function WeaveStandalone(){
             <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>decay:</span><input type="range" min={30} max={80} value={decay*100} onChange={ev=>rerunDecay(+ev.target.value/100)} style={{width:50}}/><span style={{fontSize:10,color:"#aaa",width:24}}>{decay.toFixed(2)}</span></div>
           </div>
         </div>
-        <div style={{display:"flex",gap:14,marginBottom:10,padding:"8px 12px",background:"#0d0d0d",borderRadius:4,border:"1px solid #1a1a1a",fontSize:9,color:"#555",flexWrap:"wrap"}}>
-          {wLayers.polarity&&<span><span style={{color:"#82e0aa"}}>■</span>/<span style={{color:"#ff6b6b"}}>■</span> polarity</span>}
-          {wLayers.emotion&&<span><span style={{color:"#f0b27a"}}>—</span> emotion</span>}
-          {showArousal&&<span><span style={{color:"#f7dc6f"}}>━</span> arousal</span>}
-          {wLayers.frequency&&<span><span style={{color:"#bb8fce"}}>○</span> brightness</span>}
-          {wLayers.relevance&&<span><span style={{color:"#4ecdc4",fontWeight:600}}>B</span> weight</span>}
-          {wLayers.community&&<span style={{background:"#4ecdc41a",padding:"0 4px",borderRadius:2}}>community</span>}
-        </div>
         <div ref={contentRef} style={{display:"flex",gap:10,alignItems:"stretch",height:540,overflow:"hidden"}}>
           <WeaveReader enriched={activeWR.enriched} layers={wLayers} highlightLemma={wHighlight} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} onHover={(t,x,y)=>{setWHovTok(t);setWHovPos({x,y})}} onClick={lem=>setWHighlight(prev=>prev===lem?null:lem)} enabledSlots={enabledSlots} showArousal={showArousal} scrollRef={readerRef} onScroll={handleReaderScroll} gridSize={gridSize}/>
           <WeaveMinimap enriched={activeWR.enriched} layers={wLayers} enabledSlots={enabledSlots} showArousal={showArousal} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} scrollFrac={scrollFrac} viewFrac={viewFrac} onSeek={handleMinimapSeek} height={contentH}/>
@@ -337,6 +329,14 @@ function WeaveStandalone(){
             <div style={{fontSize:10,color:"#888",marginBottom:3}}>Top {topN} · click to highlight</div>
             <WeaveWordPanel result={activeWR} topN={topN} highlightLemma={wHighlight} onClickWord={w=>setWHighlight(prev=>prev===w?null:w)} ngMode={wNgMode} setNgMode={setWNgMode}/>
           </div>
+        </div>
+        <div style={{display:"flex",gap:14,marginTop:10,padding:"8px 12px",background:"#0d0d0d",borderRadius:4,border:"1px solid #1a1a1a",fontSize:11,color:"#555",flexWrap:"wrap"}}>
+          {wLayers.polarity&&<span><span style={{color:"#82e0aa"}}>■</span>/<span style={{color:"#ff6b6b"}}>■</span> polarity</span>}
+          {wLayers.emotion&&<span><span style={{color:"#f0b27a"}}>—</span> emotion</span>}
+          {showArousal&&<span><span style={{color:"#f7dc6f"}}>━</span> arousal</span>}
+          {wLayers.frequency&&<span><span style={{color:"#bb8fce"}}>○</span> brightness</span>}
+          {wLayers.relevance&&<span><span style={{color:"#4ecdc4",fontWeight:600}}>B</span> weight</span>}
+          {wLayers.community&&<span style={{background:"#4ecdc41a",padding:"0 4px",borderRadius:2}}>community</span>}
         </div>
       </div>}
       {tab==="weave"&&!activeWR&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center",color:"#555"}}><div style={{fontSize:14,marginBottom:8}}>← Analyze documents first.</div><div style={{fontSize:11,color:"#444"}}>Six analytical layers projected onto the text itself.</div></div></div>}
