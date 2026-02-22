@@ -51,7 +51,8 @@ function spreadAct(fMap,syn,pos,depth,decay,flow){
 const getNg=(ts,n)=>{const g=[];for(let i=0;i<=ts.length-n;i++)g.push(ts.slice(i,i+n).join(" "));return _.chain(g).countBy().toPairs().sortBy(1).reverse().value()};
 
 function analyzeForWeave(text,eng,topN,winSize,wnDepth,decay,flow){
-  const paras=text.split(/\n\s*\n+/).filter(p=>p.trim());
+  const norm=text.replace(/[\u2018\u2019\u201A\u201B]/g,"'").replace(/[\u201C\u201D\u201E\u201F]/g,'"');
+  const paras=norm.split(/\n\s*\n+/).filter(p=>p.trim());
   const allWords=[];
   const renderParas=paras.map(para=>{const parts=[];const rx=/([\w'-]+)|(\s+)|([^\w\s'-]+)/g;let m;
     while((m=rx.exec(para))!==null){if(m[1]){const surface=m[1],lower=surface.toLowerCase();
@@ -86,11 +87,14 @@ async function cSet(k,v){try{const db=await openDB();return new Promise(r=>{cons
 async function loadAsset(key,path,bin,cb){const c=await cGet(key);if(c)return c;if(!ASSET_BASE_URL)return null;const b=ASSET_BASE_URL.endsWith("/")?ASSET_BASE_URL:ASSET_BASE_URL+"/";if(cb)cb("Fetching "+path+"...");try{const r=await fetch(b+path);if(!r.ok)return null;const d=bin?await r.arrayBuffer():await r.json();await cSet(key,d);return d}catch{return null}}
 
 // ═══ WEAVE COMPONENTS ═══
-function StackedUnderlines({emotions,arousal,showEmo,showAro}){
-  if(!showEmo||emotions.length===0)return null;
-  const th=showAro?1+(arousal??0.5)*2.5:2;
-  return <span style={{position:"absolute",bottom:-2,left:0,right:0,display:"flex",flexDirection:"column",gap:1,pointerEvents:"none"}}>
-    {emotions.map(e=> <span key={e} style={{height:th,background:EC[e],borderRadius:0.5,opacity:0.85}}/>)}</span>}
+function EmoBars({emotions,arousal,showEmo,showAro,enabledSlots}){
+  if(!showEmo)return <span style={{position:"absolute",bottom:0,left:0,right:0,height:8,pointerEvents:"none"}}/>;
+  const active=EMOTIONS.filter(e=>enabledSlots.has(e));
+  const present=new Set(emotions);
+  if(!active.length)return <span style={{position:"absolute",bottom:0,left:0,right:0,height:8,pointerEvents:"none"}}/>;
+  const h=showAro?Math.max(2,Math.round((arousal??0.5)*8)):6;
+  return <span style={{position:"absolute",bottom:0,left:0,right:0,height:8,display:"flex",gap:0,alignItems:"flex-end",pointerEvents:"none",padding:"0 1px"}}>
+    {active.map(e=> <span key={e} style={{flex:1,height:present.has(e)?h:0,background:present.has(e)?EC[e]:"transparent",borderRadius:"1px 1px 0 0",opacity:0.85,minWidth:1,maxWidth:4}}/>)}</span>}
 
 function WeaveTooltip({token,x,y}){
   if(!token||token.isStop)return null;const t=token;
@@ -103,23 +107,69 @@ function WeaveTooltip({token,x,y}){
     {t.vad&&<div>V={t.vad.v?.toFixed(2)} A={t.vad.a?.toFixed(2)} D={t.vad.d?.toFixed(2)}</div>}
   </div>}
 
-function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onClick,enabledSlots,showArousal}){
+function WeaveMinimap({enriched,layers,enabledSlots,showArousal,maxFreq,maxRel,scrollFrac,viewFrac,onSeek,height}){
+  const cvRef=useRef();
+  const flatWords=useMemo(()=>{const out=[];enriched.forEach((para,pi)=>{para.forEach(t=>{if(t.type==="word")out.push(t)});out.push(null)});return out},[enriched]);
+  useEffect(()=>{const cv=cvRef.current;if(!cv)return;const ctx=cv.getContext("2d");const w=60,h=height||cv.parentElement?.clientHeight||400;
+    cv.width=w;cv.height=h;ctx.fillStyle="#0d0d0d";ctx.fillRect(0,0,w,h);
+    const total=flatWords.length;if(!total)return;
+    const rowH=Math.max(1,Math.min(3,h/Math.ceil(total/12)));const cols=12,cw=Math.floor(w/cols);
+    let row=0,col=0;
+    flatWords.forEach(t=>{if(!t){row++;col=0;return}
+      const y=row*rowH,x=col*cw;if(y>h)return;
+      let c="#333";
+      if(!t.isStop){
+        if(layers.polarity&&t.vader!==null){c=t.vader>0.05?"#82e0aa":t.vader<-0.05?"#ff6b6b":"#666"}
+        else if(layers.community&&t.community!==null){c=CC[t.community%CC.length]}
+        else if(layers.emotion){const fe=t.emotions?.filter(e=>enabledSlots.has(e))||[];c=fe.length?EC[fe[0]]:"#555"}
+        else if(layers.relevance){const rn=maxRel>0?Math.log(1+t.relevance)/Math.log(1+maxRel):0;const b=Math.round(50+rn*200);c="rgb("+b+","+Math.round(b*1.2)+","+b+")"}
+        else if(layers.frequency){const fn=maxFreq>0?Math.log(1+t.frequency)/Math.log(1+maxFreq):0;const b=Math.round(40+fn*180);c="rgb("+b+","+b+","+b+")"}
+        else c="#555"
+      }else c="#222";
+      ctx.fillStyle=c;ctx.fillRect(x+1,y,cw-1,Math.max(1,rowH-1));
+      col++;if(col>=cols){col=0;row++}});
+    const totalRows=row+1,mapH=totalRows*rowH;
+    const vpY=scrollFrac*Math.min(mapH,h),vpH=Math.max(8,viewFrac*Math.min(mapH,h));
+    ctx.fillStyle="rgba(78,205,196,0.15)";ctx.fillRect(0,vpY,w,vpH);
+    ctx.strokeStyle="#4ecdc466";ctx.lineWidth=1;ctx.strokeRect(0.5,vpY+0.5,w-1,vpH-1);
+  },[flatWords,layers,enabledSlots,showArousal,maxFreq,maxRel,scrollFrac,viewFrac,height]);
+  const handleClick=useCallback(e=>{const cv=cvRef.current;if(!cv)return;const r=cv.getBoundingClientRect();const frac=(e.clientY-r.top)/r.height;onSeek(Math.max(0,Math.min(1,frac)))},[onSeek]);
+  const dragRef=useRef(false);
+  const onDown=useCallback(e=>{dragRef.current=true;handleClick(e)},[handleClick]);
+  const onMove=useCallback(e=>{if(dragRef.current)handleClick(e)},[handleClick]);
+  const onUp=useCallback(()=>{dragRef.current=false},[]);
+  useEffect(()=>{window.addEventListener("mouseup",onUp);return ()=>window.removeEventListener("mouseup",onUp)},[onUp]);
+  return <canvas ref={cvRef} style={{width:60,flexShrink:0,cursor:"pointer",borderLeft:"1px solid #2a2a2a",borderRight:"1px solid #2a2a2a"}} onMouseDown={onDown} onMouseMove={onMove}/>}
+
+function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onClick,enabledSlots,showArousal,scrollRef,onScroll,gridSize}){
   if(!enriched?.length) return <div style={{color:"#555",textAlign:"center",marginTop:60,fontSize:13}}>Run analysis to see annotated text.</div>;
-  return <div style={{flex:1,overflowY:"auto",padding:"24px 32px",lineHeight:2.4,wordSpacing:"0.06em"}}>
+  // Compute bin boundaries matching Vellum's tokenize (all words length>1)
+  const gs=gridSize||10,cells=gs*gs;
+  let totalWords=0;enriched.forEach(para=>para.forEach(t=>{if(t.type==="word"&&t.lower&&t.lower.length>1)totalWords++}));
+  const base=Math.floor(totalWords/cells),extra=totalWords%cells;
+  const binStarts=useMemo(()=>{const s=new Set();let pos=0;for(let i=0;i<cells;i++){s.add(pos);pos+=i<extra?base+1:base}return s},[totalWords,cells,base,extra]);
+  const binLabel=(wi)=>{let pos=0;for(let i=0;i<cells;i++){const sz=i<extra?base+1:base;if(wi>=pos&&wi<pos+sz)return"["+(Math.floor(i/gs)+1)+","+(i%gs+1)+"]";pos+=sz}return null};
+
+  let wordIdx=0;
+  return <div ref={scrollRef} onScroll={onScroll} style={{flex:1,overflowY:"auto",padding:"24px 32px",lineHeight:2.6,wordSpacing:"0.06em"}}>
     {enriched.map((para,pi)=> <div key={pi} style={{marginBottom:20}}>{para.map((t,ti)=>{
       if(t.type!=="word") return <span key={ti} style={{fontFamily:"monospace"}}>{t.surface}</span>;
-      if(t.isStop) return <span key={ti} style={{color:"#444",fontFamily:"monospace"}}>{t.surface}</span>;
-      const s={fontFamily:"monospace",cursor:"pointer",position:"relative",display:"inline-block",transition:"all 0.15s"};
+      const isWord=t.lower&&t.lower.length>1;
+      const wi=isWord?wordIdx:-1;
+      if(isWord)wordIdx++;
+      const showMarker=isWord&&binStarts.has(wi);
+      const marker=showMarker?binLabel(wi):null;
+
+      if(t.isStop) return <span key={ti} style={{fontFamily:"monospace"}}>{showMarker&&<span data-bin={wi} title={marker} style={{display:"inline-block",width:0,height:"1.1em",borderLeft:"1.5px solid #4ecdc444",marginRight:2,verticalAlign:"middle",cursor:"pointer"}} onClick={e=>{e.target.scrollIntoView({behavior:"smooth",block:"start"})}}/>}<span style={{color:"#444"}}>{t.surface}</span></span>;
+      const s={fontFamily:"monospace",cursor:"pointer",position:"relative",display:"inline-block",transition:"all 0.15s",padding:"1px 0px",paddingBottom:10,borderRadius:"2px"};
       s.color=layers.polarity&&t.vader!==null?(t.vader>0.05?"#82e0aa":t.vader<-0.05?"#ff6b6b":"#999"):"#ccc";
       if(layers.frequency){const fn=maxFreq>0?Math.log(1+t.frequency)/Math.log(1+maxFreq):0;s.opacity=0.25+fn*0.75}
       if(layers.relevance){const rn=maxRel>0?Math.log(1+t.relevance)/Math.log(1+maxRel):0;s.fontWeight=Math.round(100+rn*500)}else s.fontWeight=400;
-      if(layers.community&&t.community!==null){s.backgroundColor=CC[t.community%CC.length]+"1a";s.borderRadius="2px";s.padding="1px 2px";s.margin="0 -2px"}
+      if(layers.community&&t.community!==null){s.backgroundColor=CC[t.community%CC.length]+"1a"}
       if(highlightLemma&&t.lemma===highlightLemma){s.outline="2px solid #4ecdc4";s.outlineOffset="3px";s.borderRadius="3px";s.textShadow="0 0 8px #4ecdc466";if(!s.backgroundColor)s.backgroundColor="#4ecdc40d"}
       const filtEmo=layers.emotion?t.emotions.filter(e=>enabledSlots.has(e)):[];
-      const hasUL=filtEmo.length>0;
-      if(hasUL){const th=showArousal?1+(t.vad?.a??0.5)*2.5:2;s.paddingBottom=filtEmo.length*(th+1)+2}
-      return <span key={ti} style={s} onMouseEnter={e=>onHover(t,e.clientX,e.clientY)} onMouseMove={e=>onHover(t,e.clientX,e.clientY)} onMouseLeave={()=>onHover(null,0,0)} onClick={()=>onClick(t.lemma)}>
-        {t.surface}<StackedUnderlines emotions={filtEmo} arousal={t.vad?.a??null} showEmo={layers.emotion} showAro={showArousal}/></span>})}</div>)}</div>}
+      return <span key={ti} style={{fontFamily:"monospace"}}>{showMarker&&<span data-bin={wi} title={marker} style={{display:"inline-block",width:0,height:"1.1em",borderLeft:"1.5px solid #4ecdc466",marginRight:2,verticalAlign:"middle",cursor:"pointer"}} onClick={e=>{e.target.scrollIntoView({behavior:"smooth",block:"start"})}}/>}<span style={s} onMouseEnter={e=>onHover(t,e.clientX,e.clientY)} onMouseMove={e=>onHover(t,e.clientX,e.clientY)} onMouseLeave={()=>onHover(null,0,0)} onClick={()=>onClick(t.lemma)}>
+        {t.surface}<EmoBars emotions={filtEmo} arousal={t.vad?.a??null} showEmo={layers.emotion} showAro={showArousal} enabledSlots={enabledSlots}/></span></span>})}</div>)}</div>}
 
 function WeaveWordPanel({result,topN,highlightLemma,onClickWord,ngMode,setNgMode}){
   const{freqPairs,relevanceMap,maxFreq,maxRel,ng2,ng3}=result;
@@ -152,12 +202,21 @@ function WeaveStandalone(){
   const[wLayers,setWLayers]=useState({polarity:true,emotion:true,frequency:false,relevance:false,community:false});
   const[showArousal,setShowArousal]=useState(false);
   const[enabledSlots,setEnabledSlots]=useState(new Set([...EMOTIONS,"center"]));
+  const[gridSize,setGridSize]=useState(10);
   const[wHighlight,setWHighlight]=useState(null);
   const[wHovTok,setWHovTok]=useState(null);
   const[wHovPos,setWHovPos]=useState({x:0,y:0});
   const[wNgMode,setWNgMode]=useState("1");
   const[wActiveDoc,setWActiveDoc]=useState(null);
   const[showParams,setShowParams]=useState(false);
+  const readerRef=useRef();
+  const[scrollFrac,setScrollFrac]=useState(0);
+  const[viewFrac,setViewFrac]=useState(1);
+  const[contentH,setContentH]=useState(400);
+  const handleReaderScroll=useCallback(()=>{const el=readerRef.current;if(!el)return;const sh=el.scrollHeight,ch=el.clientHeight;setScrollFrac(sh>ch?el.scrollTop/(sh-ch):0);setViewFrac(sh>0?ch/sh:1)},[]);
+  const handleMinimapSeek=useCallback(frac=>{const el=readerRef.current;if(!el)return;const sh=el.scrollHeight,ch=el.clientHeight;el.scrollTop=frac*(sh-ch)},[]);
+  const contentRef=useRef();
+  useEffect(()=>{if(!contentRef.current)return;const ro=new ResizeObserver(en=>{setContentH(en[0].contentRect.height)});ro.observe(contentRef.current);return ()=>ro.disconnect()},[]);
 
   const eng=useRef({pos:new POSTagger(),lem:new Lemmatizer(),syn:new SynsetEngine(),sent:new SentimentScorer()});
   useEffect(()=>{if(!ASSET_BASE_URL)return;let c=false;(async()=>{const e=eng.current;
@@ -182,7 +241,7 @@ function WeaveStandalone(){
   const runAnalysis=useCallback(()=>{if(!validDocs.length)return;setLoading(true);setMsg("Analyzing...");setTimeout(()=>{const e=eng.current;
     const wdr={};validDocs.forEach(d=>{wdr[d.id]=analyzeForWeave(d.text,e,topN,winSize,wnDepth,decay,flow)});
     setWeavePerDoc(wdr);setWActiveDoc(validDocs[0].id);setWHighlight(null);
-    setLoading(false);setMsg("");setTab("weave")},50)},[docs,topN,wnDepth,decay,flow,winSize]);
+    setLoading(false);setMsg("");setTab("weave");setTimeout(handleReaderScroll,100)},50)},[docs,topN,wnDepth,decay,flow,winSize]);
 
   const rerunFlow=v=>{setFlow(v);if(!validDocs.length||!analyzedIds.length)return;setTimeout(()=>{const e=eng.current;const wdr={};validDocs.forEach(d=>{wdr[d.id]=analyzeForWeave(d.text,e,topN,winSize,wnDepth,decay,v)});setWeavePerDoc(wdr)},50)};
   const rerunTopN=useCallback(n=>{setTopN(n);if(!validDocs.length||!analyzedIds.length)return;setTimeout(()=>{const e=eng.current;const wdr={};validDocs.forEach(d=>{wdr[d.id]=analyzeForWeave(d.text,e,n,winSize,wnDepth,decay,flow)});setWeavePerDoc(wdr)},50)},[docs,wnDepth,decay,flow,winSize]);
@@ -216,6 +275,8 @@ function WeaveStandalone(){
     {tab==="weave"&&activeWR&&<div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",borderBottom:"1px solid #2a2a2a",background:"#151515"}}>
       {LAYER_CFG.map(l=> <button key={l.id} onClick={()=>toggleWLayer(l.id)} title={l.desc} style={{padding:"5px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",cursor:"pointer",background:wLayers[l.id]?l.color+"22":"#1a1a1a",color:wLayers[l.id]?l.color:"#555",border:"1px solid "+(wLayers[l.id]?l.color:"#333"),transition:"all 0.15s"}}>{l.label}</button>)}
       {wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}
+      <div style={{width:1,height:22,background:"#333"}}/>
+      <div style={{display:"flex",gap:0,border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[10,20,30].map(g=> <button key={g} onClick={()=>setGridSize(g)} style={{padding:"5px 11px",background:gridSize===g?"#bb8fce":"#1a1a1a",color:gridSize===g?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:gridSize===g?"bold":"normal"}}>{g}²</button>)}</div>
       <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
         <button onClick={()=>setShowArousal(!showArousal)} style={{padding:"5px 10px",background:showArousal?"#2a2a1a":"#1a1a1a",color:showArousal?"#f7dc6f":"#555",border:"1px solid "+(showArousal?"#f7dc6f44":"#333"),borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>Arousal</button>
         <div style={{width:1,height:22,background:"#333"}}/>
@@ -269,11 +330,14 @@ function WeaveStandalone(){
       </div>)}
 
       {/* WEAVE TAB — content area matches Vellum: flex + gap:10 + alignItems:stretch */}
-      {tab==="weave"&&activeWR&&<div style={{display:"flex",gap:10,alignItems:"stretch",flex:1,overflow:"hidden"}}>
-        <WeaveReader enriched={activeWR.enriched} layers={wLayers} highlightLemma={wHighlight} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} onHover={(t,x,y)=>{setWHovTok(t);setWHovPos({x,y})}} onClick={lem=>setWHighlight(prev=>prev===lem?null:lem)} enabledSlots={enabledSlots} showArousal={showArousal}/>
-        <div style={{width:160,flexShrink:0,display:"flex",flexDirection:"column"}}>
-          <div style={{fontSize:10,color:"#888",marginBottom:3}}>Top {topN} · click to highlight</div>
-          <WeaveWordPanel result={activeWR} topN={topN} highlightLemma={wHighlight} onClickWord={w=>setWHighlight(prev=>prev===w?null:w)} ngMode={wNgMode} setNgMode={setWNgMode}/>
+      {tab==="weave"&&activeWR&&<div style={{maxWidth:1100,margin:"0 auto",width:"100%",display:"flex",flexDirection:"column"}}>
+        <div ref={contentRef} style={{display:"flex",gap:10,alignItems:"stretch",height:540,overflow:"hidden"}}>
+          <WeaveReader enriched={activeWR.enriched} layers={wLayers} highlightLemma={wHighlight} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} onHover={(t,x,y)=>{setWHovTok(t);setWHovPos({x,y})}} onClick={lem=>setWHighlight(prev=>prev===lem?null:lem)} enabledSlots={enabledSlots} showArousal={showArousal} scrollRef={readerRef} onScroll={handleReaderScroll} gridSize={gridSize}/>
+          <WeaveMinimap enriched={activeWR.enriched} layers={wLayers} enabledSlots={enabledSlots} showArousal={showArousal} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} scrollFrac={scrollFrac} viewFrac={viewFrac} onSeek={handleMinimapSeek} height={contentH}/>
+          <div style={{width:160,flexShrink:0,display:"flex",flexDirection:"column"}}>
+            <div style={{fontSize:10,color:"#888",marginBottom:3}}>Top {topN} · click to highlight</div>
+            <WeaveWordPanel result={activeWR} topN={topN} highlightLemma={wHighlight} onClickWord={w=>setWHighlight(prev=>prev===w?null:w)} ngMode={wNgMode} setNgMode={setWNgMode}/>
+          </div>
         </div>
       </div>}
       {tab==="weave"&&!activeWR&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center",color:"#555"}}><div style={{fontSize:14,marginBottom:8}}>← Analyze documents first.</div><div style={{fontSize:11,color:"#444"}}>Six analytical layers projected onto the text itself.</div></div></div>}
