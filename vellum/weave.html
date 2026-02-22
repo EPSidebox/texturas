@@ -8,20 +8,13 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #111; overflow: hidden; }
   </style>
-  <!-- React 18 -->
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <!-- Lodash 4 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
-  <!-- Babel standalone (JSX in browser) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel" data-type="module" src="weave.jsx"></script>
-  <script type="text/babel">
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(React.createElement(WeaveStandalone));
-  </script>
+  <script type="text/babel" src="weave.jsx"></script>
 </body>
 </html>
