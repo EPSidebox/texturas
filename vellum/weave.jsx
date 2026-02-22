@@ -173,17 +173,22 @@ function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onCl
 
 function WeaveWordPanel({result,topN,highlightLemma,onClickWord,ngMode,setNgMode}){
   const{freqPairs,relevanceMap,maxFreq,maxRel,ng2,ng3}=result;
-  const isUni=ngMode==="1";const words=isUni?freqPairs.slice(0,topN):ngMode==="2"?ng2.slice(0,topN):ng3.slice(0,topN);const maxV=words[0]?.[1]||1;
+  const[sortBy,setSortBy]=useState("freq");
+  const isUni=ngMode==="1";const items=isUni?freqPairs.slice(0,topN):ngMode==="2"?ng2.slice(0,topN):ng3.slice(0,topN);
+  const sorted=useMemo(()=>{if(!isUni||sortBy==="freq")return items;return[...items].sort((a,b)=>(relevanceMap[b[0]]||0)-(relevanceMap[a[0]]||0))},[items,sortBy,isUni,relevanceMap]);
+  const maxV=items[0]?.[1]||1;
+  const gMR=isUni?Math.max(...items.map(([w])=>relevanceMap[w]||0),1):1;
   return <div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0,height:"100%"}}>
-    <div style={{display:"flex",gap:0,marginBottom:6,border:"1px solid #333",borderRadius:3,overflow:"hidden"}}>{[["1","1"],["2","2"],["3","3"]].map(([v,l])=> <button key={v} onClick={()=>setNgMode(v)} style={{flex:1,padding:"4px 0",background:ngMode===v?"#bb8fce":"#1a1a1a",color:ngMode===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:10,fontFamily:"monospace",fontWeight:ngMode===v?"bold":"normal"}}>{l}</button>)}</div>
-    <div style={{fontSize:10,color:"#666",marginBottom:6}}>Top {topN} {isUni?"words":ngMode==="2"?"bigrams":"trigrams"}</div>
-    <div style={{flex:1,overflowY:"auto"}}>{words.map(([w,c])=>{const rel=isUni?(relevanceMap[w]||0):0,isHL=highlightLemma===w;
-      return <div key={w} onClick={()=>onClickWord(w)} style={{padding:"4px 6px",marginBottom:2,borderRadius:3,cursor:"pointer",background:isHL?"#4ecdc422":"transparent",border:isHL?"1px solid #4ecdc4":"1px solid transparent"}}>
-        <div style={{fontSize:11,fontFamily:"monospace",color:isHL?"#4ecdc4":"#ccc",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w}</div>
-        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:1}}><div style={{flex:1,height:3,background:"#222",borderRadius:1,overflow:"hidden"}}><div style={{width:(c/maxV*100)+"%",height:"100%",background:"#4ecdc4",borderRadius:1,opacity:.7}}/></div><span style={{width:24,textAlign:"right",fontSize:9,color:"#888",fontFamily:"monospace"}}>{c}</span></div>
-        {isUni&&maxRel>0&&<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,height:3,background:"#222",borderRadius:1,overflow:"hidden"}}><div style={{width:(rel/maxRel*100)+"%",height:"100%",background:"#45b7d1",borderRadius:1,opacity:.7}}/></div><span style={{width:24,textAlign:"right",fontSize:9,color:"#666",fontFamily:"monospace"}}>{rel.toFixed(0)}</span></div>}
-      </div>})}</div>
-    <div style={{display:"flex",gap:8,marginTop:4,fontSize:9,color:"#666"}}><span><span style={{color:"#4ecdc4"}}>—</span> freq</span>{isUni&&<span><span style={{color:"#45b7d1"}}>—</span> relev</span>}</div>
+    <div style={{display:"flex",gap:0,marginBottom:2,border:"1px solid #333",borderRadius:3,overflow:"hidden"}}>{[["1","1"],["2","2"],["3","3"]].map(([v,l])=> <button key={v} onClick={()=>{setNgMode(v);setSortBy("freq")}} style={{flex:1,padding:"4px 0",background:ngMode===v?"#bb8fce":"#1a1a1a",color:ngMode===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:10,fontFamily:"monospace",fontWeight:ngMode===v?"bold":"normal"}}>{l}</button>)}</div>
+    <button onClick={()=>onClickWord(null)} style={{padding:"4px 8px",marginBottom:2,background:!highlightLemma?"#4ecdc4":"#1a1a1a",color:!highlightLemma?"#111":"#999",border:"1px solid "+(!highlightLemma?"#4ecdc4":"#333"),borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:!highlightLemma?"bold":"normal",textAlign:"left"}}>All</button>
+    {isUni&&<div style={{display:"flex",gap:0,marginBottom:3,border:"1px solid #333",borderRadius:3,overflow:"hidden"}}>{[["freq","Freq"],["relevance","Relev"]].map(([v,l])=> <button key={v} onClick={()=>setSortBy(v)} style={{flex:1,padding:"3px 0",background:sortBy===v?"#45b7d1":"#1a1a1a",color:sortBy===v?"#111":"#666",border:"none",cursor:"pointer",fontSize:9,fontFamily:"monospace"}}>{l}</button>)}</div>}
+    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>{sorted.map(([w,c])=>{const rel=isUni?(relevanceMap[w]||0):0,isHL=highlightLemma===w,pr=c>0;
+      return <button key={w} onClick={()=>onClickWord(w)} style={{padding:"3px 7px",background:isHL?"#1a2a2a":"#151515",color:isHL?"#ddd":pr?"#777":"#444",border:"1px solid "+(isHL?"#4ecdc466":"#222"),borderRadius:3,cursor:"pointer",fontSize:10,fontFamily:"monospace",textAlign:"left",display:"flex",flexDirection:"column",gap:1,opacity:pr?1:.35}}>
+        <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{w}</div>
+        <div style={{display:"flex",alignItems:"center",gap:4,width:"100%",height:12}}><div style={{flex:1,height:3,background:"#222",borderRadius:1,overflow:"hidden"}}><div style={{width:(c/maxV*100)+"%",height:"100%",background:isHL?"#4ecdc4":"#444",borderRadius:1,opacity:isHL?.8:.3}}/></div><span style={{width:24,textAlign:"right",fontSize:9,color:isHL?"#aaa":"#555",flexShrink:0}}>{c||""}</span></div>
+        {isUni&&<div style={{display:"flex",alignItems:"center",gap:4,width:"100%",height:12}}><div style={{flex:1,height:3,background:"#222",borderRadius:1,overflow:"hidden"}}><div style={{width:(rel/gMR*100)+"%",height:"100%",background:isHL?"#45b7d1":"#444",borderRadius:1,opacity:isHL?.8:.3}}/></div><span style={{width:24,textAlign:"right",fontSize:9,color:isHL?"#7ab8cc":"#444",flexShrink:0}}>{rel?rel.toFixed(0):""}</span></div>}
+      </button>})}</div>
+    <div style={{display:"flex",gap:8,marginTop:3,fontSize:9,color:"#888"}}><span><span style={{color:"#4ecdc4"}}>—</span> freq</span>{isUni&&<span><span style={{color:"#45b7d1"}}>—</span> relev</span>}</div>
   </div>}
 
 function EmoToggle({enabledSlots,setEnabledSlots}){
