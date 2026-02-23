@@ -219,7 +219,7 @@ function WeaveStandalone(){
   var activeWR=wActiveDoc?weavePerDoc[wActiveDoc]:null;var curDoc=docs.find(function(d){return d.id===activeInputDoc});var hasMarkers=curDoc&&curDoc.text&&curDoc.text.indexOf("---DOC")!==-1;
   var expParams={topN:topN,wnDepth:wnDepth,decay:decay,flow:flow,winSize:winSize};
 
-  return <div style={{background:"#111",color:"#ddd",minHeight:"100vh",fontFamily:"monospace",display:"flex",flexDirection:"column"}}>
+  return <div style={{background:"#111",color:"#ddd",height:"100vh",fontFamily:"monospace",display:"flex",flexDirection:"column"}}>
     <div style={{padding:"12px 20px",borderBottom:"1px solid #2a2a2a",display:"flex",alignItems:"center",gap:12}}>
       <span style={{fontSize:18,color:"#4ecdc4",fontWeight:"bold"}}>{"\u2B21"} Texturas</span><span style={{fontSize:11,color:"#555"}}>Weave + Output</span>
       <div style={{marginLeft:"auto",display:"flex",gap:8}}>{eng.current.sent.ready&&<span style={{fontSize:10,color:"#f7dc6f"}}>{"\u25CF"} sent</span>}{eng.current.pos.ready&&<span style={{fontSize:10,color:"#bb8fce"}}>{"\u25CF"} nlp</span>}{eng.current.syn.ready&&<span style={{fontSize:10,color:"#45b7d1"}}>{"\u25CF"} wn</span>}</div></div>
@@ -302,7 +302,7 @@ function WeaveStandalone(){
 
       {/* ABOUT */}
       {tab==="about"&&<div style={{maxWidth:800,margin:"0 auto",lineHeight:1.8,paddingBottom:40}}>
-        <h3 style={{color:"#4ecdc4",fontSize:16,fontWeight:"normal",fontFamily:"monospace",marginBottom:6}}>Texturas</h3>
+        <h3 style={{color:"#4ecdc4",fontSize:15,fontWeight:"normal",fontFamily:"monospace",marginBottom:6}}>Texturas</h3>
         <p style={{fontSize:11,color:"#666",fontFamily:"monospace",marginBottom:16,fontStyle:"italic"}}>From Latin textura {"\u2014"} weaving. The root of {"\u201C"}text.{"\u201D"} Plural: the many woven layers.</p>
         <p style={{fontSize:12,color:"#999",fontFamily:"monospace",marginBottom:24}}><strong style={{color:"#ccc"}}>Texturas v0.7</strong> {"\u2014"} Multi-layered correlated textual analysis<br/>Ernesto Pe{"\u00F1"}a {"\u00B7"} Northeastern University</p>
 
