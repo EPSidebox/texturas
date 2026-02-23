@@ -145,7 +145,7 @@ function WeaveReader({enriched,layers,highlightLemma,maxFreq,maxRel,onHover,onCl
     var s={fontFamily:"monospace",cursor:"pointer",position:"relative",display:"inline-block",transition:"all 0.15s",padding:"1px 0px",paddingBottom:10,borderRadius:"2px",fontWeight:400};
     s.color=(layers.polarity&&t.vader!==null)?(t.vader>0.05?"#82e0aa":t.vader<-0.05?"#ff6b6b":"#999"):"#ccc";
     if(layers.frequency){var fn=maxFreq>0?Math.log(1+t.frequency)/Math.log(1+maxFreq):0;s.opacity=0.25+fn*0.75}
-    if(layers.relevance){var rn=maxRel>0?Math.log(1+t.relevance)/Math.log(1+maxRel):0;s.fontWeight=Math.round(100+rn*500)}
+    if(layers.relevance){var rn=maxRel>0?Math.log(1+t.relevance)/Math.log(1+maxRel):0;s.fontWeight=Math.round(100+rn*600)}
     if(layers.community&&t.community!==null)s.backgroundColor=CC[t.community%CC.length]+"1a";
     if(highlightLemma&&t.lemma===highlightLemma){s.outline="2px solid #4ecdc4";s.outlineOffset="3px";s.borderRadius="3px";s.textShadow="0 0 8px #4ecdc466";if(!s.backgroundColor)s.backgroundColor="#4ecdc40d"}
     var filtEmo=layers.emotion?t.emotions.filter(function(e){return enabledSlots.has(e)}):[];
