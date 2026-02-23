@@ -236,11 +236,11 @@ function WeaveStandalone(){
 
       {/* WEAVE */}
       {tab==="weave"&&activeWR&&<div style={{maxWidth:1100,margin:"0 auto"}}>
-        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",height:36,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",height:36}}>
+          {/* LEFT: Weave-specific */}
           {LAYER_CFG.map(function(l){return <button key={l.id} onClick={function(){toggleWLayer(l.id)}} style={{padding:"5px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",cursor:"pointer",background:wLayers[l.id]?l.color+"22":"#1a1a1a",color:wLayers[l.id]?l.color:"#555",border:"1px solid "+(wLayers[l.id]?l.color:"#333")}}>{l.label}</button>})}
           <div style={{width:40,flexShrink:0}}>{wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}</div>
-          <div style={{width:1,height:22,background:"#333"}}/>
-          <div style={{display:"flex",border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[10,20,30].map(function(g){return <button key={g} onClick={function(){setGridSize(g)}} style={{padding:"5px 11px",background:gridSize===g?"#bb8fce":"#1a1a1a",color:gridSize===g?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:gridSize===g?"bold":"normal"}}>{g+"\u00B2"}</button>})}</div>
+          {/* RIGHT: Shared controls (persist across tabs after merge) */}
           <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={function(){setShowArousal(!showArousal)}} style={{padding:"5px 10px",background:showArousal?"#2a2a1a":"#1a1a1a",color:showArousal?"#f7dc6f":"#555",border:"1px solid "+(showArousal?"#f7dc6f44":"#333"),borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"monospace"}}>Arousal</button>
             <div style={{width:1,height:22,background:"#333"}}/>
@@ -248,7 +248,9 @@ function WeaveStandalone(){
             <div style={{width:1,height:22,background:"#333"}}/>
             <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>N:</span><input type="range" min={10} max={50} value={topN} onChange={function(ev){rerunTopN(+ev.target.value)}} style={{width:60}}/><span style={{fontSize:10,color:"#aaa",width:16}}>{topN}</span></div>
             <div style={{width:1,height:22,background:"#333"}}/>
-            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>decay:</span><input type="range" min={30} max={80} value={decay*100} onChange={function(ev){rerunDecay(+ev.target.value/100)}} style={{width:50}}/><span style={{fontSize:10,color:"#aaa",width:24}}>{decay.toFixed(2)}</span></div></div></div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:10,color:"#666"}}>decay:</span><input type="range" min={30} max={80} value={decay*100} onChange={function(ev){rerunDecay(+ev.target.value/100)}} style={{width:50}}/><span style={{fontSize:10,color:"#aaa",width:24}}>{decay.toFixed(2)}</span></div>
+            <div style={{width:1,height:22,background:"#333"}}/>
+            <div style={{display:"flex",border:"1px solid #333",borderRadius:4,overflow:"hidden"}}>{[10,20,30].map(function(g){return <button key={g} onClick={function(){setGridSize(g)}} style={{padding:"5px 11px",background:gridSize===g?"#bb8fce":"#1a1a1a",color:gridSize===g?"#111":"#666",border:"none",cursor:"pointer",fontSize:11,fontFamily:"monospace",fontWeight:gridSize===g?"bold":"normal"}}>{g+"\u00B2"}</button>})}</div></div></div>
         <div ref={contentRef} style={{display:"flex",gap:10,alignItems:"stretch",height:540,overflow:"hidden"}}>
           <WeaveReader enriched={activeWR.enriched} layers={wLayers} highlightLemma={wHighlight} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} onHover={function(t,x,y){setWHovTok(t);setWHovPos({x:x,y:y})}} onClick={function(lem){setWHighlight(function(prev){return prev===lem?null:lem})}} enabledSlots={enabledSlots} showArousal={showArousal} scrollRef={readerRef} onScroll={handleReaderScroll} gridSize={gridSize}/>
           <WeaveMinimap enriched={activeWR.enriched} layers={wLayers} enabledSlots={enabledSlots} maxFreq={activeWR.maxFreq} maxRel={activeWR.maxRel} scrollFrac={scrollFrac} viewFrac={viewFrac} onSeek={handleMinimapSeek} height={contentH}/>
