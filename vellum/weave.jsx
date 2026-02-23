@@ -335,3 +335,4 @@ function WeaveStandalone(){
     <WeaveTooltip token={wHovTok} x={wHovPos.x} y={wHovPos.y}/>
     {loading&&<div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",padding:"8px 20px",background:"#1a1a1aee",border:"1px solid #444",borderRadius:6,fontSize:11,color:"#f7dc6f",fontFamily:"monospace",zIndex:999}}>{msg||"Processing..."}</div>}
   </div>}
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(WeaveStandalone));
