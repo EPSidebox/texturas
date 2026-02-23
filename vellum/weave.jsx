@@ -257,7 +257,7 @@ function WeaveStandalone(){
         var toggleExp=function(k){setExpLayers(function(prev){var n=Object.assign({},prev);n[k]=!n[k];return n})};
         var layerOpts=[{k:"polarity",l:"VADER polarity",c:"#82e0aa"},{k:"emotion",l:"NRC EmoLex (Plutchik 8)",c:"#f0b27a"},{k:"vad",l:"NRC VAD (V/A/D)",c:"#f7dc6f"},{k:"frequency",l:"Frequency",c:"#bb8fce"},{k:"relevance",l:"Relevance (spreading activation)",c:"#4ecdc4"},{k:"community",l:"Community (Louvain)",c:"#45b7d1"}];
         var aDocs=validDocs.filter(function(d){return weavePerDoc[d.id]});
-        return <div style={{maxWidth:800,margin:"0 auto"}}>
+        return <div style={{maxWidth:800,margin:"0 auto",paddingBottom:40}}>
           <h3 style={{color:"#4ecdc4",fontSize:15,fontWeight:"normal",fontFamily:"monospace",marginBottom:16}}>Export</h3>
           <div style={{marginBottom:24}}>
             <div style={{fontSize:12,color:"#aaa",marginBottom:8}}>Annotation layers:</div>
@@ -292,7 +292,7 @@ function WeaveStandalone(){
       {tab==="output"&&analyzedIds.length===0&&<div style={{color:"#555",textAlign:"center",marginTop:60,fontSize:13}}>{"\u2190"} Run analysis before exporting.</div>}
 
       {/* ABOUT */}
-      {tab==="about"&&<div style={{maxWidth:700,margin:"0 auto",lineHeight:1.8,paddingBottom:40}}>
+      {tab==="about"&&<div style={{maxWidth:800,margin:"0 auto",lineHeight:1.8,paddingBottom:40}}>
         <h3 style={{color:"#4ecdc4",fontSize:16,fontWeight:"normal",fontFamily:"monospace",marginBottom:6}}>Texturas</h3>
         <p style={{fontSize:11,color:"#666",fontFamily:"monospace",marginBottom:16,fontStyle:"italic"}}>From Latin textura {"\u2014"} weaving. The root of {"\u201C"}text.{"\u201D"} Plural: the many woven layers.</p>
         <p style={{fontSize:12,color:"#999",fontFamily:"monospace",marginBottom:24}}><strong style={{color:"#ccc"}}>Texturas v0.7</strong> {"\u2014"} Multi-layered correlated textual analysis<br/>Ernesto Pe{"\u00F1"}a {"\u00B7"} Northeastern University</p>
