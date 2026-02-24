@@ -1,50 +1,120 @@
-# ⬡ Texturas
+# ⬡ Textures
 
 **Multi-layered correlated textual analysis**
 
-Texturas is a browser-based tool for identifying thematic, discursive, and affective patterns in text data. It layers corpus linguistics, distributional semantics, multi-lexicon sentiment analysis, and network modularity onto the same text — and cross-correlates these layers to surface patterns that no single method would reveal in isolation.
+Textures is a browser-based tool for identifying thematic, discursive, and affective patterns in text. It layers corpus linguistics, multi-lexicon sentiment analysis, spreading activation relevance scoring, and network modularity onto the same text — and cross-correlates these layers to surface patterns no single method reveals alone.
 
 From Latin *textura* (weaving) — the root of "text." Plural: the many woven layers.
 
-**Author:** Ernesto Peña · Northeastern University
+**Author:** Ernesto Peña · Northeastern University  
+**Version:** 0.8.1  
+**Live:** [epsidebox.github.io/texturas/vellum/](https://epsidebox.github.io/texturas/vellum/)
+
+---
+
+## How It Works
+
+Textures runs entirely in the browser. No server, no API keys. Static data assets (sentiment lexicons, WordNet data) are loaded once and cached locally via IndexedDB for instant subsequent visits.
+
+A single unified analysis pipeline feeds both visualization modes:
+
+```
+Text input (paste / upload .txt / import .xml / separator markers)
+  → Smart quote normalization
+  → Paragraph-preserving tokenization (regex-based)
+  → POS tagging (40K lookup table + suffix rules, 4-way: n/v/a/r)
+  → Lemmatization (WordNet exception lists + morphological rules)
+  → Frequency analysis (unigrams, bigrams, trigrams, stop-word filtered)
+  → Multi-lexicon sentiment scoring (5 lexicons, POS-informed, sense-aware)
+  → Spreading activation relevance (WordNet graph traversal with decay)
+  → Co-occurrence matrix + Louvain community detection
+  → Two output views from one pass:
+      → Vellum: flat enriched tokens → grid binning → Three.js 3D visualization
+      → Weave: paragraph-structured tokens → annotated text reader
+  → Export: TEI XML (inline/standoff), CSV, Markdown report
+```
 
 ---
 
 ## Features
 
-- **Frequency analysis** — unigrams, bigrams, trigrams with stop word filtering (negation-aware)
+### Visualization Modes
+
+**Vellum** — 3D grid visualization (Three.js)
+- Text mapped to a configurable grid (10², 20², 30²)
+- **Channels page:** size = relevance, color = VADER polarity, height = arousal
+- **Emotions page:** 3×3 Plutchik sub-boxes per cell, brightness = emotion proportion
+- Isometric/flat camera transitions, cell hover/click-to-pin tooltips
+- Multi-document patchwork view (Ctrl+click)
+- Word panel with click-to-filter
+
+**Weave** — Annotated text reader
+- Six visual layers projected onto the text itself:
+  - Polarity → text color (green/red/gray)
+  - Emotion → stacked underlines (Plutchik colors, toggleable per emotion)
+  - Arousal → underline thickness
+  - Frequency → brightness (opacity)
+  - Relevance → font weight (Roboto Mono 100–700)
+  - Community → background highlight
+- Minimap with click/drag navigation
+- Word panel with click-to-highlight
+
+### Analysis
+
 - **Multi-lexicon sentiment** — NRC EmoLex (Plutchik 8 emotions), NRC Affect Intensity, NRC VAD (valence/arousal/dominance), VADER (polarity), SentiWordNet (sense-level pos/neg/obj)
-- **Semantic expansion** — GloVe distributional similarity + WordNet taxonomic relationships (hypernyms, hyponyms, meronyms)
-- **Co-occurrence networks** — windowed co-occurrence matrix with Louvain community detection
-- **Cross-layer correlations** — community emotion profiles, sentiment trajectory, frequency × sentiment scatter, emotion co-occurrence
-- **Multi-document support** — per-document and aggregate analysis with cross-document comparison
-- **3D network visualization** — Three.js force-directed and seed-centric layouts with configurable visual channels
-- **TEI XML export** — inline and standoff annotation models, per-document and corpus-level (`<teiCorpus>`)
-- **CSV export** — per-token data with all annotation layers as columns
-- **NLP pipeline** — POS tagging (hybrid lookup + suffix rules), WordNet lemmatization, sense-aware sentiment scoring
+- **Spreading activation** — WordNet-based relevance scoring with configurable depth, decay, and directional flow (bidirectional, upward/hypernyms, downward/hyponyms)
+- **Community detection** — Louvain modularity on windowed co-occurrence of top-N terms
+- **Multi-document support** — per-document analysis with shared parameters for comparability
 
-## How It Works
+### Export
 
-Texturas runs entirely in the browser. No server, no API keys. Static data assets (word vectors, sentiment lexicons, WordNet data) are loaded once and cached locally for instant subsequent visits.
+- **TEI XML** — inline and standoff annotation modes, per-document and corpus-level (`<teiCorpus>`)
+- **CSV** — per-token, all annotation layers as columns, layer-filtered by checkboxes
+- **Markdown** — summary report with parameters, top words, communities, citations
+- **TEI import** — parse `<w>` elements from Textures TEI output, reconstruct text for re-analysis
 
-### Analysis Pipeline
+---
+
+## Technical Architecture
+
+- **Platform:** Static web app, GitHub Pages deployment
+- **Runtime:** React 18 + Babel standalone (JSX compiled in browser, no build toolchain)
+- **3D:** Three.js r128
+- **Utilities:** Lodash 4, SheetJS 0.18.5 (XLSX export)
+- **Font:** Roboto Mono (variable weight 100–700)
+- **NLP:** All client-side — factory function engines for POS, lemmatization, synset traversal, sentiment scoring
+- **Caching:** IndexedDB for loaded assets (~11MB first visit, instant thereafter)
+
+### File Structure
 
 ```
-Text input
-  → Tokenization (negation-preserving)
-  → POS tagging (lookup table + suffix rules)
-  → Lemmatization (WordNet morphological rules)
-  → Frequency analysis (unigrams, bigrams, trigrams)
-  → Multi-lexicon sentiment scoring (5 lexicons, sense-aware)
-  → Semantic expansion (GloVe cosine similarity + WordNet synsets)
-  → Co-occurrence matrix + community detection (Louvain)
-  → Cross-layer correlation computation
-  → TEI/CSV/report export
+vellum/
+├── index.html      ← HTML wrapper (CDN deps + Babel + app.jsx)
+├── app.jsx         ← Full application (unified pipeline + Vellum + Weave + Output + About)
+```
+
+### Deployed Assets
+
+```
+assets/
+├── vectors/
+│   ├── vocab.json          (~2 MB, 50K words)
+│   └── vectors.bin         (~10 MB, GloVe 50d — reserved for future use)
+├── lexicons/
+│   ├── nrc-emolex.json     (NRC EmoLex, 14K terms, 8 Plutchik emotions + pos/neg)
+│   ├── nrc-intensity.json  (NRC Affect Intensity, 4 emotions with continuous 0–1 scores)
+│   ├── nrc-vad.json        (NRC VAD v2.1, ~20K terms, valence/arousal/dominance 0–1)
+│   ├── vader.json          (VADER, ~7.5K terms, compound score -1 to +1)
+│   └── sentiwordnet.json   (SentiWordNet 3.0, ~117K synsets, pos/neg/obj summing to 1)
+└── wordnet/
+    ├── lemmatizer.json     (WordNet exception lists + morphological rules)
+    ├── pos-lookup.json     (word → most frequent POS, ~40K entries)
+    └── synsets.json        (trimmed synset graph, depth=1, vocab-filtered, 12.9MB)
 ```
 
 ---
 
-## Setup
+## Setup (for self-hosting or development)
 
 ### Prerequisites
 
@@ -55,17 +125,17 @@ Text input
 ### Step 1: Clone this repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/texturas.git
+git clone https://github.com/EPSidebox/texturas.git
 cd texturas
 ```
 
 ### Step 2: Download source data
 
-You need to download the raw lexicon and vector files from their original sources. These are not included in the repository due to licensing.
+Download the raw lexicon and vector files from their original sources. These are not included in the repository due to licensing.
 
 | Resource | Download from | File you need |
 |---|---|---|
-| GloVe vectors | [nlp.stanford.edu/data/glove.6B.zip](https://nlp.stanford.edu/data/glove.6B.zip) | `glove.6B.50d.txt` (from inside the zip) |
+| GloVe vectors | [nlp.stanford.edu/data/glove.6B.zip](https://nlp.stanford.edu/data/glove.6B.zip) | `glove.6B.50d.txt` |
 | NRC EmoLex | [saifmohammad.com](https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm) | `NRC-Emotion-Lexicon-Wordlevel-v0.92.txt` |
 | NRC Affect Intensity | [saifmohammad.com](https://saifmohammad.com/WebPages/AffectIntensity.htm) | `NRC-Affect-Intensity-Lexicon.txt` |
 | NRC VAD | [saifmohammad.com](https://saifmohammad.com/WebPages/nrc-vad.html) | `NRC-VAD-Lexicon.txt` |
@@ -88,7 +158,7 @@ python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
 # Convert GloVe vectors (top 50,000 words, 50 dimensions)
 python convert.py glove --input raw/glove.6B.50d.txt --output assets/vectors/
 
-# Extract WordNet data (lemmatizer, POS lookup, synset relationships)
+# Extract WordNet data
 python convert.py wordnet --output assets/wordnet/
 
 # Convert all sentiment lexicons
@@ -101,106 +171,70 @@ python convert.py lexicons \
   --output assets/lexicons/
 ```
 
-After conversion, your `assets/` folder should contain:
-
-```
-assets/
-├── vectors/
-│   ├── vocab.json      (~2 MB)
-│   └── vectors.bin     (~10 MB)
-├── lexicons/
-│   ├── nrc-emolex.json
-│   ├── nrc-intensity.json
-│   ├── nrc-vad.json
-│   ├── vader.json
-│   └── sentiwordnet.json
-└── wordnet/
-    ├── lemmatizer.json
-    ├── pos-lookup.json
-    └── synsets.json
-```
-
 You can delete the `raw/` folder after conversion.
 
-### Step 5: Configure the tool
+### Step 5: Configure and deploy
 
-Open `index.html` and set the `ASSET_BASE_URL` constant near the top:
+In `vellum/app.jsx`, set the `ASSET_BASE_URL` constant:
 
 ```javascript
-const ASSET_BASE_URL = "https://YOUR_USERNAME.github.io/texturas/assets/";
+var ASSET_BASE_URL = "https://YOUR_USERNAME.github.io/texturas/assets/";
 ```
 
-### Step 6: Deploy to GitHub Pages
-
-Push everything to your repository, then enable GitHub Pages:
-
-1. Go to your repository on github.com
-2. Click **Settings** (tab at the top)
-3. Scroll down to **Pages** (in the left sidebar)
-4. Under **Source**, select **main** branch
-5. Click **Save**
-
-Your tool will be live at `https://YOUR_USERNAME.github.io/texturas/` within a few minutes.
+Push to GitHub and enable GitHub Pages (Settings → Pages → Source: main branch).
 
 ---
 
 ## Usage
 
 1. Open the tool in your browser
-2. Go to the **Assets** tab to verify all resources loaded (you should see ✓ next to each)
-3. Go to **Input** — paste text or upload `.txt` files
-4. Click **Analyze** in the sidebar
-5. Navigate the tabs: Frequencies → Sentiment → Correlations → Semantic → Co-occurrence → Network
-6. Go to **Export** to download TEI XML, CSV, or summary reports
+2. Go to **Input** — paste text, upload `.txt` files, or import `.xml` (TEI)
+3. Use `---DOC: Label---` separators to paste multiple documents at once
+4. Click **Analyze**
+5. **Vellum tab** — explore the 3D grid; switch between Channels and Emotions pages; use the word panel to filter cells
+6. **Weave tab** — read annotated text with six visual layers; toggle layers independently; use the word panel to highlight terms
+7. **Output tab** — export TEI XML, CSV, or Markdown reports with configurable layer selection
+8. **About tab** — citations, methodology, ethics note
 
-### Multi-document analysis
+### Shared Controls (right toolbar)
 
-- Add documents with the **+ Add** button or **Upload .txt**
-- Paste text with `---DOC: Label---` separators to auto-split
-- After analysis, use the document selector bar to switch between individual documents and the **Aggregate** view
-
-### 3D Network
-
-- **Force mode**: co-occurrence drives proximity. Communities emerge spatially.
-- **Seed mode**: click any node to anchor it at center. Connected terms orbit by co-occurrence strength.
-- Drag to orbit, scroll to zoom, hover for details.
+Both Vellum and Weave tabs share these parameters:
+- **Arousal** — toggle arousal encoding (height in Vellum, underline thickness in Weave)
+- **Flow** — spreading activation direction (Bi / ↑ hypernyms / ↓ hyponyms)
+- **N** — top-N words for analysis (10–50)
+- **Decay** — activation decay factor (0.30–0.80)
+- **Grid** — grid resolution (10² / 20² / 30²)
 
 ---
 
 ## Lexicon Citations
 
-If you use Texturas in published work, please cite the tool and the relevant resources:
+If you use Textures in published work, please cite the relevant resources:
 
 - **NRC EmoLex:** Mohammad, S.M. & Turney, P.D. (2013). Crowdsourcing a Word-Emotion Association Lexicon. *Computational Intelligence*, 29(3), 436–465.
-- **NRC Affect Intensity:** Mohammad, S.M. (2018). Word Affect Intensities. In *Proceedings of LREC-2018*, Miyazaki, Japan.
-- **NRC VAD:** Mohammad, S.M. (2018). Obtaining Reliable Human Ratings of Valence, Arousal, and Dominance for 20,000 English Words. In *Proceedings of ACL-2018*, Melbourne, Australia.
+- **NRC Affect Intensity:** Mohammad, S.M. (2018). Word Affect Intensities. In *Proceedings of LREC-2018*.
+- **NRC VAD:** Mohammad, S.M. (2018). Obtaining Reliable Human Ratings of Valence, Arousal, and Dominance for 20,000 English Words. In *Proceedings of ACL-2018*.
 - **VADER:** Hutto, C.J. & Gilbert, E. (2014). VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text. In *Proceedings of ICWSM-2014*.
-- **SentiWordNet:** Baccianella, S., Esuli, A. & Sebastiani, F. (2010). SentiWordNet 3.0: An Enhanced Lexical Resource for Sentiment Analysis and Opinion Mining. In *Proceedings of LREC-2010*, Valletta, Malta.
+- **SentiWordNet:** Baccianella, S., Esuli, A. & Sebastiani, F. (2010). SentiWordNet 3.0: An Enhanced Lexical Resource for Sentiment Analysis and Opinion Mining. In *Proceedings of LREC-2010*.
 - **WordNet:** Princeton University. (2010). About WordNet. WordNet, Princeton University.
 - **GloVe:** Pennington, J., Socher, R. & Manning, C.D. (2014). GloVe: Global Vectors for Word Representation. In *Proceedings of EMNLP-2014*.
 
-For ethical considerations regarding automatic emotion detection, see:
-- Mohammad, S.M. (2022). Ethics Sheet for Automatic Emotion Recognition and Sentiment Analysis. *Computational Linguistics*, 48(2), 239–278.
+### Methodology
+
+- **Multi-lexicon approach:** Mitigates single-source bias per Czarnek & Stillwell (2022).
+- **Spreading activation:** Adapted from Collins & Loftus (1975) for corpus relevance scoring.
+- **Community detection:** Louvain modularity, Blondel et al. (2008).
+
+### Ethics
+
+Automated sentiment and emotion analysis produces preliminary indicators, not ground truth. Results should be interpreted in context and validated against close reading. See: Mohammad, S.M. (2022). Ethics Sheet for Automatic Emotion Recognition and Sentiment Analysis. *Computational Linguistics*, 48(2), 239–278.
 
 ---
 
-## Licensing
+## License
 
-| Component | License |
-|---|---|
-| NRC Lexicons (EmoLex, Intensity, VAD) | Non-commercial research and educational use |
-| VADER | MIT License |
-| SentiWordNet 3.0 | CC BY-SA 4.0 |
-| Princeton WordNet | WordNet License (BSD-like) |
-| GloVe | Public Domain |
-| Texturas (this tool) | TBD |
+NRC lexicons are licensed for non-commercial research and education use only. VADER is MIT licensed. SentiWordNet is CC BY-SA 4.0. WordNet uses a BSD-like license. GloVe vectors are public domain. The Textures application code license is TBD.
 
 ---
 
-## Technical Stack
-
-- **React** — UI framework
-- **D3.js** — 2D visualizations (heatmaps, charts, trajectories)
-- **Three.js** — 3D network visualization
-- **Lodash** — Data manipulation
-- No server, no API, no external services at runtime
+*Textures is an open-source research tool. Static deployment. No data leaves the browser.*
