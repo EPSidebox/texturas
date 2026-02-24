@@ -436,7 +436,7 @@ function Textures(){
         <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",height:36}}>
           {/* Left: Weave-specific */}
           {LAYER_CFG.map(function(l){return <button key={l.id} onClick={function(){toggleWLayer(l.id)}} style={{padding:"5px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",cursor:"pointer",background:wLayers[l.id]?l.color+"22":"#1a1a1a",color:wLayers[l.id]?l.color:"#555",border:"1px solid "+(wLayers[l.id]?l.color:"#333")}}>{l.label}</button>})}
-          <div style={{width:36,flexShrink:0,display:"flex",alignItems:"center"}}>{wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}</div>
+          <div style={{width:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{wLayers.emotion&&<EmoToggle enabledSlots={enabledSlots} setEnabledSlots={setEnabledSlots}/>}</div>
           {SharedRight}
         </div>
         <div ref={contentRef} style={{display:"flex",gap:10,alignItems:"stretch",height:540,overflow:"hidden"}}>
