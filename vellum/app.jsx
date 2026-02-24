@@ -275,7 +275,7 @@ function WeaveWordPanel({result,topN,highlightLemma,onClickWord,ngMode,setNgMode
 function EmoToggle({enabledSlots,setEnabledSlots}){return <div style={{display:"inline-grid",gridTemplateColumns:"repeat(3,10px)",gap:1}}>{EMO_LAYOUT.map(function(item,i){var key=item.emo||"center",on=enabledSlots.has(key),col=item.emo?EC[item.emo]:"#ffffff";return <div key={i} onClick={function(){setEnabledSlots(function(prev){var n=new Set(prev);if(n.has(key))n.delete(key);else n.add(key);return n})}} title={item.emo||"relevance"} style={{width:10,height:10,borderRadius:1,background:on?col:"#555",opacity:on?1:0.5,cursor:"pointer",border:"1px solid "+(on?col+"66":"#444")}}/>})}</div>}
 
 // ═══ MAIN ═══
-function Texturas()
+function Texturas(){
   var _d=useState([{id:"d1",label:"Document 1",text:""}]);var docs=_d[0],setDocs=_d[1];
   var _ai=useState("d1");var activeInputDoc=_ai[0],setActiveInputDoc=_ai[1];
   var _t=useState("input");var tab=_t[0],setTab=_t[1];
