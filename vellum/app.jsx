@@ -1,5 +1,4 @@
-var norm=text.replace(/[\u2018\u2019\u201A\u201B]/g,"'").replace(/[\u201C\u201D\u201E\u201F]/g,'"');
-  var toks=vTokenize(norm);const { useState, useRef, useEffect, useCallback, useMemo } = React;
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 // ═══ CONFIG ═══
 var ASSET_BASE_URL="https://epsidebox.github.io/texturas/assets/";
