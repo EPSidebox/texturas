@@ -1,4 +1,5 @@
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+var norm=text.replace(/[\u2018\u2019\u201A\u201B]/g,"'").replace(/[\u201C\u201D\u201E\u201F]/g,'"');
+  var toks=vTokenize(norm);const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 // ═══ CONFIG ═══
 var ASSET_BASE_URL="https://epsidebox.github.io/texturas/assets/";
@@ -52,7 +53,8 @@ var vGetFreqs=function(ts){return _.chain(ts).countBy().toPairs().sortBy(1).reve
 function getNg(ts,n){var g=[];for(var i=0;i<=ts.length-n;i++)g.push(ts.slice(i,i+n).join(" "));return _.chain(g).countBy().toPairs().sortBy(1).reverse().value()}
 
 function analyzeForVellum(text,eng,topN,wnDepth,decay,flow){
-  var toks=vTokenize(text);
+  var norm=text.replace(/[\u2018\u2019\u201A\u201B]/g,"'").replace(/[\u201C\u201D\u201E\u201F]/g,'"');
+  var toks=vTokenize(norm);
   var allLem=toks.map(function(t){var p=eng.pos.ready?eng.pos.tag(t):"n";var lemma=eng.lem.ready?eng.lem.lemmatize(t,p):t;return{surface:t,lemma:lemma,pos:p,stop:STOP_WORDS.has(t)&&!NEGATION.has(t)}});
   var filtLem=allLem.filter(function(t){return!t.stop}).map(function(t){return t.lemma});
   var freqs=vGetFreqs(filtLem),fMap=Object.fromEntries(freqs),topWords=freqs.slice(0,topN);
